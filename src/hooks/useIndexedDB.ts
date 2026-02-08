@@ -202,6 +202,19 @@ export function useIndexedDB() {
     };
   }, []);
 
+  // F3: beforeunload — flush pendiente al cerrar tab/navegar
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (pendingWrite.current) {
+        clearTimeout(pendingWrite.current);
+        pendingWrite.current = null;
+        persistToIndexedDB(latestDb.current);
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
+
   // Bug 1 fix: setDb sin side effects dentro del updater de setState.
   // El debounce usa latestDb ref para siempre persistir el valor más reciente.
   const setDb = useCallback((

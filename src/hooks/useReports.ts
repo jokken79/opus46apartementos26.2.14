@@ -221,8 +221,14 @@ export function useReports(db: AppDatabase) {
   // ========================================
   const loadHistory = useCallback(async (): Promise<ReportHistory> => {
     try {
-      const snapshots = await unsDB.snapshots.orderBy('cycle_month').reverse().toArray();
-      return { snapshots: snapshots as unknown as MonthlySnapshot[], version: '1.0' };
+      const raw = await unsDB.snapshots.orderBy('cycle_month').reverse().toArray();
+      // Filtrar solo snapshots con shape válida (evita datos corruptos)
+      const snapshots = raw.filter((s: any): s is MonthlySnapshot =>
+        typeof s === 'object' && s !== null &&
+        typeof s.id === 'string' && typeof s.cycle_month === 'string' &&
+        typeof s.profit === 'number' && Array.isArray(s.company_summary)
+      );
+      return { snapshots, version: '1.0' };
     } catch {
       return { snapshots: [], version: '1.0' };
     }
