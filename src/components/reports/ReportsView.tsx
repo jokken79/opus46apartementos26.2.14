@@ -145,11 +145,9 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ db, cycle, onUpdateTen
     };
   }, [tenantsByProperty]);
 
-  // Ciclo actual como string YYYY-MM (recalcula si cambia el ciclo)
-  const currentCycleMonth = useMemo(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  }, [cycle.month]);
+  // Ciclo actual como string YYYY-MM
+  const now = new Date();
+  const currentCycleMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
   // Verificar si ya se cerró el mes actual
   const isCurrentMonthClosed = useMemo(() => {

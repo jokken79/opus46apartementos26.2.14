@@ -10,9 +10,10 @@ import { GlassCard, StatCard, Modal, NavButton, NavButtonMobile } from './compon
 import { SettingsView } from './components/settings/SettingsView';
 import { ImportView } from './components/import/ImportView';
 import { useIndexedDB } from './hooks/useIndexedDB';
-import type { Property, Tenant, Employee, AppConfig, AppDatabase, AlertItem } from './types/database';
+import type { Property, Tenant, Employee, AppDatabase, AlertItem } from './types/database';
 import { validateBackup, validateProperty, validateTenant } from './utils/validators';
 import { isPropertyActive } from './utils/propertyHelpers';
+import { COMPANY_INFO } from './utils/constants';
 
 // --- ID Generator (monotónico, sin colisiones) ---
 let _lastId = 0;
@@ -23,16 +24,14 @@ const generateId = (): number => {
 };
 
 // --- SheetJS ---
-let sheetJSReady = false;
 const useLoadSheetJS = () => {
   useEffect(() => {
-    if ((window as any).XLSX) { sheetJSReady = true; return; }
+    if ((window as any).XLSX) return;
     const script = document.createElement('script');
     script.src = "https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js";
     script.integrity = "sha384-OLBgp1GsljhM2TJ+sbHjaiH9txEUvgdDTAzHv2P24donTt6/529l+9Ua0vFImLlb";
     script.crossOrigin = "anonymous";
     script.async = true;
-    script.onload = () => { sheetJSReady = true; };
     script.onerror = () => { console.error('[SheetJS] Error cargando CDN'); };
     document.body.appendChild(script);
   }, []);
@@ -53,27 +52,6 @@ const calculateProRata = (monthlyAmount: number, entryDate: string) => {
   const amount = Math.round(raw / 10) * 10;
   return { amount, days: daysOccupied, totalDays, isProRata: true };
 };
-
-// --- DATOS CORPORATIVOS ---
-const COMPANY_INFO = {
-  name_ja: "ユニバーサル企画株式会社", name_en: "UNS-KIKAKU",
-  postal_code: "461-0025", full_address: "愛知県名古屋市東区徳川2-18-18",
-  phone: "052-938-8840", mobile: "080-7376-1988",
-  email: "infoapp@uns-kikaku.com", representative: "中山 雅和",
-  licenses: [
-    { name: "労働者派遣事業", number: "派 23-303669" },
-    { name: "登録支援機関", number: "21登-006367" },
-    { name: "古物商許可証", number: "愛知県公安委員会 第541032001..." }
-  ],
-  logo_url: "https://uns-kikaku.com/wp-content/uploads/2024/02/rogo-300x123.png"
-};
-
-const INITIAL_DB: AppDatabase = {
-  properties: [], tenants: [], employees: [],
-  config: { companyName: COMPANY_INFO.name_en, closingDay: 0, defaultCleaningFee: 30000 }
-};
-
-// --- COMPANY INFO (usado en header y settings) ---
 
 const EMPTY_PROPERTY_FORM = { id: null as number | null, name: '', room_number: '', postal_code: '', address_auto: '', address_detail: '', manager_name: '', manager_phone: '', contract_start: new Date().toISOString().split('T')[0], contract_end: '', type: '1K', capacity: 2, rent_cost: 0, rent_price_uns: 0, parking_cost: 0, kanri_hi: 0, billing_mode: 'fixed' as const };
 const EMPTY_TENANT_FORM = { employee_id: '', name: '', name_kana: '', company: '', property_id: '' as string | number, rent_contribution: 0, parking_fee: 0, entry_date: new Date().toISOString().split('T')[0] };

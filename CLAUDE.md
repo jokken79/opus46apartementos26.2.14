@@ -36,7 +36,7 @@ npm test           # Jest test runner (watch mode)
 
 ```
 src/
-├── App.tsx                          # Main app (~911 lines, routing + state + modals)
+├── App.tsx                          # Main app (~889 lines, routing + state + modals)
 ├── App.css                          # Tailwind utilities + custom animations
 ├── App.test.tsx                     # App render tests (2 tests)
 ├── index.tsx                        # React entry + ErrorBoundary wrapper
@@ -65,7 +65,7 @@ src/
     ├── validators.test.ts           # Validator tests (20 tests)
     ├── propertyHelpers.ts           # isPropertyActive() + extractArea()
     ├── propertyHelpers.test.ts      # Property helper tests (18 tests)
-    └── constants.ts                 # Shared constants (COMPANY_INFO, INITIAL_DB)
+    └── constants.ts                 # Shared constants (COMPANY_INFO)
 ```
 
 ## Architecture & Conventions
@@ -121,7 +121,7 @@ src/
 1. All types are defined in `src/types/database.ts` — add new interfaces there, not inline.
 2. Validation schemas live in `src/utils/validators.ts` — keep in sync with type changes.
 3. Database operations go through the `useIndexedDB` hook — never write to IndexedDB directly.
-4. The main `App.tsx` is large (~911 lines); prefer extracting logic into hooks or new components under `src/components/`.
+4. The main `App.tsx` is large (~889 lines); prefer extracting logic into hooks or new components under `src/components/`.
 5. UI primitives (GlassCard, Modal, etc.) are in `src/components/ui/` — import from there, do not duplicate inline.
 6. Use `isPropertyActive()` from `src/utils/propertyHelpers.ts` — do not write inline active-property filters.
 7. ID generation uses `generateId()` with a monotonic counter (avoids `Date.now()` collisions).
@@ -134,7 +134,7 @@ src/
 - Use Tailwind classes; avoid adding new CSS unless animation-specific.
 
 ### Common pitfalls
-- `window.XLSX` is loaded dynamically — always check `sheetJSReady` state before using.
+- `window.XLSX` is loaded dynamically — always check `(window as any).XLSX` before using.
 - Tenant `status` is `'active' | 'inactive'` — filter by status when counting occupancy.
 - `closingDay: 0` means end-of-month billing; other values (15, 20, 25) are mid-month. Use `?? 0` not `|| 0` because `0` is a valid value.
 - Property `billing_mode` can be `'split'` (rent divided among tenants) or `'fixed'` (fixed per tenant).
