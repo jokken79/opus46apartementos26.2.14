@@ -253,7 +253,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [searchTerm, setSearchTerm] = useState('');
   // IndexedDB (Dexie) — reemplaza localStorage
-  const { db, setDb, isLoading: isDbLoading } = useIndexedDB();
+  const { db, setDb, isLoading: isDbLoading, resetDb } = useIndexedDB();
 
   // --- ESTADOS ---
   const [isDragging, setIsDragging] = useState(false);
@@ -673,7 +673,7 @@ export default function App() {
           {activeTab === 'import' && <ImportViewComponent isDragging={isDragging} importStatus={importStatus} previewSummary={previewSummary} onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }} onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }} onDrop={(e) => { e.preventDefault(); setIsDragging(false); if (e.dataTransfer.files.length) processExcelFile(e.dataTransfer.files[0]); }} onFileChange={(e) => e.target.files?.length && processExcelFile(e.target.files[0])} onSave={saveToDatabase} />}
 
           {/* ====== SETTINGS ====== */}
-          {activeTab === 'settings' && <SettingsView db={db} setDb={setDb} onDownloadBackup={downloadBackup} onRestoreBackup={restoreBackup} onReset={() => { if (window.confirm('¿Borrar todo?')) setDb(INITIAL_DB); }} />}
+          {activeTab === 'settings' && <SettingsView db={db} setDb={setDb} onDownloadBackup={downloadBackup} onRestoreBackup={restoreBackup} onReset={() => { if (window.confirm('¿Borrar todo?')) resetDb(); }} />}
         </main>
       </div>
 

@@ -72,6 +72,25 @@ async function persistToIndexedDB(data: AppDatabase): Promise<void> {
   }
 }
 
+// Limpiar toda la base de datos IndexedDB (incluye snapshots y meta)
+async function clearAllIndexedDB(): Promise<void> {
+  try {
+    await unsDB.transaction('rw',
+      [unsDB.properties, unsDB.tenants, unsDB.employees, unsDB.config, unsDB.snapshots, unsDB.meta],
+      async () => {
+        await unsDB.properties.clear();
+        await unsDB.tenants.clear();
+        await unsDB.employees.clear();
+        await unsDB.config.clear();
+        await unsDB.snapshots.clear();
+        await unsDB.meta.clear();
+      }
+    );
+  } catch (error) {
+    console.error('[useIndexedDB] Error limpiando:', error);
+  }
+}
+
 // Cargar todos los datos de IndexedDB
 async function loadFromIndexedDB(): Promise<AppDatabase> {
   try {
@@ -106,6 +125,7 @@ export function useIndexedDB() {
   const [error, setError] = useState<Error | null>(null);
   const isInitialized = useRef(false);
   const pendingWrite = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const latestDb = useRef<AppDatabase>(INITIAL_DB);
 
   // Carga inicial: migrar si necesario, luego cargar
   useEffect(() => {
@@ -137,6 +157,7 @@ export function useIndexedDB() {
                     defaultCleaningFee: parsed.config?.defaultCleaningFee ?? 30000,
                   },
                 };
+                latestDb.current = fallbackDb;
                 setDbState(fallbackDb);
                 // Persistir fallback a IndexedDB
                 await persistToIndexedDB(fallbackDb);
@@ -149,6 +170,7 @@ export function useIndexedDB() {
           }
         }
 
+        latestDb.current = data;
         setDbState(data);
       } catch (err) {
         console.error('[useIndexedDB] Error en inicialización:', err);
@@ -159,7 +181,7 @@ export function useIndexedDB() {
           if (raw) {
             const parsed = JSON.parse(raw);
             if (parsed.properties) {
-              setDbState({
+              const fallbackDb: AppDatabase = {
                 properties: parsed.properties || [],
                 tenants: parsed.tenants || [],
                 employees: parsed.employees || [],
@@ -168,7 +190,9 @@ export function useIndexedDB() {
                   closingDay: parsed.config?.closingDay || 0,
                   defaultCleaningFee: parsed.config?.defaultCleaningFee ?? 30000,
                 },
-              });
+              };
+              latestDb.current = fallbackDb;
+              setDbState(fallbackDb);
             }
           }
         } catch {
@@ -180,25 +204,44 @@ export function useIndexedDB() {
     })();
   }, []);
 
-  // setDb: actualiza estado inmediatamente + escribe a IndexedDB con debounce
+  // Bug 3 fix: cancelar timeout pendiente al desmontar
+  useEffect(() => {
+    return () => {
+      if (pendingWrite.current) {
+        clearTimeout(pendingWrite.current);
+        // Persistir datos más recientes antes de desmontar
+        persistToIndexedDB(latestDb.current);
+      }
+    };
+  }, []);
+
+  // Bug 1 fix: setDb sin side effects dentro del updater de setState.
+  // El debounce usa latestDb ref para siempre persistir el valor más reciente.
   const setDb = useCallback((
     updater: AppDatabase | ((prev: AppDatabase) => AppDatabase)
   ) => {
     setDbState(prev => {
       const next = typeof updater === 'function' ? updater(prev) : updater;
-
-      // Debounce: agrupar escrituras rápidas (ej. edición inline de renta)
-      if (pendingWrite.current) {
-        clearTimeout(pendingWrite.current);
-      }
-      pendingWrite.current = setTimeout(() => {
-        persistToIndexedDB(next);
-        pendingWrite.current = null;
-      }, 100);
-
+      latestDb.current = next;
       return next;
     });
+
+    // Debounce FUERA del updater — sin side effects en setState
+    if (pendingWrite.current) {
+      clearTimeout(pendingWrite.current);
+    }
+    pendingWrite.current = setTimeout(() => {
+      persistToIndexedDB(latestDb.current);
+      pendingWrite.current = null;
+    }, 100);
   }, []);
 
-  return { db, setDb, isLoading, error };
+  // Bug 2 fix: resetDb limpia TODO en IndexedDB (snapshots, meta incluidos)
+  const resetDb = useCallback(async () => {
+    await clearAllIndexedDB();
+    latestDb.current = INITIAL_DB;
+    setDbState(INITIAL_DB);
+  }, []);
+
+  return { db, setDb, isLoading, error, resetDb };
 }
