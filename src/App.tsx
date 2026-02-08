@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import {
   Building, Users, LayoutDashboard, Search, Database, UploadCloud, PlusCircle, X,
-  FileCheck, AlertCircle, Calculator, DollarSign, UserPlus, Save, Calendar, Check,
-  Trash2, Phone, User, History, MapPin, Edit2, Map, Hash, Loader2, Bell,
-  TrendingUp, ArrowRight, Download, Upload, Settings, Clock, Mail, Award,
-  CalendarDays, Percent, LogOut, Table2, FileText
+  AlertCircle, Calculator, DollarSign, UserPlus, Calendar, Check,
+  Trash2, User, History, MapPin, Edit2, Map, Hash, Loader2, Bell,
+  TrendingUp, Settings, CalendarDays, Percent, LogOut, Table2, FileText
 } from 'lucide-react';
 import { ReportsView } from './components/reports/ReportsView';
+import { GlassCard, StatCard, Modal, NavButton, NavButtonMobile } from './components/ui';
+import { SettingsView } from './components/settings/SettingsView';
+import { ImportView } from './components/import/ImportView';
 import { useIndexedDB } from './hooks/useIndexedDB';
 import type { Property, Tenant, Employee, AppConfig, AppDatabase, AlertItem } from './types/database';
 import { validateBackup, validateProperty, validateTenant } from './utils/validators';
@@ -71,171 +73,7 @@ const INITIAL_DB: AppDatabase = {
   config: { companyName: COMPANY_INFO.name_en, closingDay: 0, defaultCleaningFee: 30000 }
 };
 
-// --- UI COMPONENTS ---
-const GlassCard = ({ children, className = "", hoverEffect = true }: { children: React.ReactNode; className?: string; hoverEffect?: boolean }) => (
-  <div className={`relative overflow-hidden rounded-2xl border border-white/10 bg-[#1a1d24]/80 backdrop-blur-md shadow-xl ${hoverEffect ? 'transition-all duration-300 hover:border-blue-500/30 hover:bg-[#20242c] hover:shadow-blue-900/10 hover:-translate-y-1' : ''} ${className}`}>
-    <div className="absolute -top-10 -right-10 w-24 h-24 bg-blue-500/5 rounded-full blur-3xl pointer-events-none"></div>
-    {children}
-  </div>
-);
-
-const StatCard = ({ title, value, subtext, icon: Icon, trend }: { title: string; value: string; subtext: string; icon: React.ComponentType<{ className?: string }>; trend?: 'up' | 'down' }) => (
-  <GlassCard hoverEffect={true} className="p-5">
-    <div className="flex justify-between items-start mb-3">
-      <div className="p-2.5 bg-gradient-to-br from-gray-800 to-black rounded-xl border border-white/5 shadow-inner"><Icon className="text-blue-400 w-5 h-5" /></div>
-      {trend && <span className={`text-[10px] font-bold px-2 py-1 rounded-full border ${trend === 'up' ? 'bg-green-500/10 text-green-400 border-green-500/30' : 'bg-red-500/10 text-red-400 border-red-500/30'}`}>{trend === 'up' ? '▲' : '▼'}</span>}
-    </div>
-    <div className="space-y-1">
-      <h3 className="text-gray-400 text-[10px] uppercase tracking-widest font-bold">{title}</h3>
-      <div className="text-3xl font-black text-white tracking-tight leading-none">{value}</div>
-      <div className="text-xs text-gray-500 font-medium">{subtext}</div>
-    </div>
-  </GlassCard>
-);
-
-const Modal = ({ isOpen, onClose, title, children, wide = false }: { isOpen: boolean; onClose: () => void; title: string; children: React.ReactNode; wide?: boolean }) => {
-  const overlayRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', handleKey);
-    return () => document.removeEventListener('keydown', handleKey);
-  }, [isOpen, onClose]);
-  if (!isOpen) return null;
-  return (
-    <div ref={overlayRef} role="dialog" aria-modal="true" aria-labelledby="modal-title" className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-300" onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}>
-      <div className={`bg-[#15171c] border border-blue-500/20 rounded-2xl w-full ${wide ? 'max-w-5xl' : 'max-w-3xl'} shadow-2xl relative max-h-[90vh] overflow-y-auto ring-1 ring-white/10 animate-in zoom-in-95 duration-300`}>
-        <div className="flex justify-between items-center p-6 border-b border-gray-800/50 sticky top-0 bg-[#15171c]/95 backdrop-blur z-20">
-          <h3 id="modal-title" className="text-xl font-bold text-white flex items-center gap-3">
-            <div className="w-1 h-6 bg-gradient-to-b from-blue-400 to-blue-600 rounded-full shadow-[0_0_10px_rgba(59,130,246,0.5)]"></div>{title}
-          </h3>
-          <button onClick={onClose} aria-label="Cerrar" className="text-gray-500 hover:text-white transition bg-gray-900/50 p-2 rounded-full hover:bg-gray-800 border border-transparent hover:border-gray-700"><X className="w-5 h-5" /></button>
-        </div>
-        <div className="p-6 md:p-8 space-y-6">{children}</div>
-      </div>
-    </div>
-  );
-};
-
-const NavButton = ({ icon: Icon, active, onClick, label }: { icon: React.ComponentType<{ className?: string }>; active: boolean; onClick: () => void; label: string }) => (
-  <button onClick={onClick} aria-label={label} title={label} className={`relative group w-12 h-12 flex flex-col items-center justify-center rounded-xl transition-all duration-300 ${active ? 'bg-blue-600 text-white shadow-lg shadow-blue-500/30 scale-110' : 'text-gray-500 hover:text-white hover:bg-white/10'}`}>
-    <Icon className={`w-5 h-5 ${active ? 'stroke-[2.5px]' : 'stroke-2'}`} />
-    <span className="absolute left-14 bg-gray-800 text-white text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap border border-white/10 pointer-events-none z-50">{label}</span>
-  </button>
-);
-
-const NavButtonMobile = ({ icon: Icon, active, onClick, label }: { icon: React.ComponentType<{ className?: string }>; active: boolean; onClick: () => void; label: string }) => (
-  <button onClick={onClick} aria-label={label} className={`flex flex-col items-center justify-center p-2 rounded-lg transition-all ${active ? 'text-blue-400' : 'text-gray-500'}`}>
-    <Icon className={`w-6 h-6 mb-1 ${active ? 'stroke-[2.5px]' : 'stroke-2'}`} />
-    <span className="text-[10px] font-bold tracking-wide">{label}</span>
-  </button>
-);
-
-// --- SETTINGS VIEW ---
-const SettingsView = ({ db, setDb, onDownloadBackup, onRestoreBackup, onReset }: { db: AppDatabase; setDb: (db: AppDatabase) => void; onDownloadBackup: () => void; onRestoreBackup: (e: React.ChangeEvent<HTMLInputElement>) => void; onReset: () => void }) => {
-  const [localConfig, setLocalConfig] = useState(db.config || INITIAL_DB.config);
-  const handleSaveConfig = () => { setDb({ ...db, config: localConfig }); alert('Configuración guardada.'); };
-  return (
-    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-4xl mx-auto pb-20">
-      <div className="flex flex-col md:flex-row items-center gap-6 bg-gradient-to-r from-[#1a1d24] to-[#0f0f12] p-8 rounded-3xl border border-white/5 shadow-2xl">
-        <div className="bg-white p-4 rounded-xl shadow-lg"><img src={COMPANY_INFO.logo_url} alt="UNS" className="h-12 object-contain" onError={(e) => { e.currentTarget.onerror = null; e.currentTarget.src = "https://via.placeholder.com/150x60?text=UNS"; }} /></div>
-        <div className="text-center md:text-left">
-          <h2 className="text-2xl font-black text-white">{COMPANY_INFO.name_ja}</h2>
-          <p className="text-blue-400 font-bold tracking-widest text-sm">{COMPANY_INFO.name_en}</p>
-          <div className="flex flex-wrap gap-4 mt-3 text-xs text-gray-400 justify-center md:justify-start">
-            <span className="flex items-center gap-1"><MapPin className="w-3 h-3"/> {COMPANY_INFO.full_address}</span>
-            <span className="flex items-center gap-1"><Phone className="w-3 h-3"/> {COMPANY_INFO.phone}</span>
-            <span className="flex items-center gap-1"><Mail className="w-3 h-3"/> {COMPANY_INFO.email}</span>
-          </div>
-        </div>
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {COMPANY_INFO.licenses.map((lic, idx) => (
-          <div key={idx} className="bg-[#1a1d24] border border-white/5 p-4 rounded-xl flex items-center gap-3">
-            <div className="p-2 bg-blue-500/10 rounded-lg text-blue-400"><Award className="w-5 h-5"/></div>
-            <div><div className="text-[10px] text-gray-500 uppercase font-bold">{lic.name}</div><div className="text-sm text-white font-mono">{lic.number}</div></div>
-          </div>
-        ))}
-      </div>
-      <div className="border-t border-gray-800 my-4"></div>
-      <GlassCard className="p-6">
-        <h3 className="text-lg font-bold text-green-500 mb-4 flex items-center gap-2"><Clock className="w-5 h-5"/> Ciclo de Facturación</h3>
-        <label className="text-xs text-gray-400 block mb-2 font-bold uppercase">Día de Cierre (締め日)</label>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          {[0, 15, 20, 25].map(day => (
-            <button key={day} onClick={() => setLocalConfig({...localConfig, closingDay: day})} className={`p-3 rounded-xl border text-sm font-bold transition-all ${localConfig.closingDay === day ? 'bg-green-500/20 border-green-500 text-green-400' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}>
-              {day === 0 ? 'Fin de Mes (末日)' : `Día ${day} (日)`}
-            </button>
-          ))}
-        </div>
-        <div className="flex justify-end mt-4"><button onClick={handleSaveConfig} className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg font-bold shadow-lg shadow-blue-500/20 flex items-center gap-2 text-sm"><Save className="w-4 h-4" /> Guardar</button></div>
-      </GlassCard>
-      <GlassCard className="p-6">
-        <h3 className="text-lg font-bold text-red-400 mb-4 flex items-center gap-2"><Trash2 className="w-5 h-5"/> クリーニング費 (Limpieza al salir)</h3>
-        <p className="text-xs text-gray-500 mb-3">Monto que se cobra al inquilino al dar de baja. Se registra automáticamente en el historial.</p>
-        <div className="flex items-center gap-3">
-          <span className="text-gray-400 text-lg font-bold">¥</span>
-          <input type="number" step="1000" className="w-48 bg-black/50 border border-gray-700 p-3 rounded-xl text-white font-mono text-lg focus:border-red-500 outline-none transition" value={localConfig.defaultCleaningFee ?? 30000} onChange={e => setLocalConfig({...localConfig, defaultCleaningFee: parseInt(e.target.value) || 0})} />
-          <span className="text-gray-500 text-xs">por persona</span>
-        </div>
-        <div className="flex justify-end mt-4"><button onClick={handleSaveConfig} className="bg-red-600 hover:bg-red-500 text-white px-6 py-2 rounded-lg font-bold shadow-lg shadow-red-500/20 flex items-center gap-2 text-sm"><Save className="w-4 h-4" /> Guardar</button></div>
-      </GlassCard>
-      <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2"><Database className="w-6 h-6 text-blue-500"/> Gestión de Datos</h3>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <GlassCard className="p-6 border-blue-500/30 bg-blue-900/10">
-          <div className="flex items-center gap-4 mb-4"><div className="p-3 bg-blue-500/20 rounded-full text-blue-400"><Download className="w-6 h-6" /></div><div><h3 className="text-lg font-bold text-white">Respaldo</h3><p className="text-xs text-blue-200">Guardar .JSON</p></div></div>
-          <button onClick={onDownloadBackup} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition shadow-lg shadow-blue-500/20 flex justify-center gap-2"><Save className="w-4 h-4" /> Descargar</button>
-        </GlassCard>
-        <GlassCard className="p-6 border-purple-500/30 bg-purple-900/10">
-          <div className="flex items-center gap-4 mb-4"><div className="p-3 bg-purple-500/20 rounded-full text-purple-400"><Upload className="w-6 h-6" /></div><div><h3 className="text-lg font-bold text-white">Restaurar</h3><p className="text-xs text-purple-200">Cargar .JSON</p></div></div>
-          <label className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 rounded-xl transition shadow-lg shadow-purple-500/20 flex justify-center gap-2 cursor-pointer text-center"><UploadCloud className="w-4 h-4" /><span>Subir</span><input type="file" accept=".json" className="hidden" onChange={onRestoreBackup} /></label>
-        </GlassCard>
-      </div>
-      <div className="mt-8 pt-4 border-t border-red-900/30">
-        <button onClick={onReset} className="w-full text-red-500 hover:text-red-400 hover:bg-red-900/10 p-4 rounded-xl text-sm flex gap-2 items-center justify-center transition-colors uppercase tracking-widest font-bold border border-transparent hover:border-red-900/50"><Trash2 className="w-5 h-5"/> Resetear Sistema</button>
-      </div>
-    </div>
-  );
-};
-
-// --- IMPORT VIEW ---
-const ImportViewComponent = ({ isDragging, importStatus, previewSummary, onDragOver, onDragLeave, onDrop, onFileChange, onSave }: { isDragging: boolean; importStatus: { type: string; msg: string }; previewSummary: string; onDragOver: (e: React.DragEvent) => void; onDragLeave: (e: React.DragEvent) => void; onDrop: (e: React.DragEvent) => void; onFileChange: (e: React.ChangeEvent<HTMLInputElement>) => void; onSave: () => void; }) => (
-  <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500 max-w-4xl mx-auto pb-20">
-    <div className="flex flex-col items-center justify-center py-10">
-      <h2 className="text-3xl font-black text-white mb-2">Centro de Sincronización</h2>
-      <p className="text-gray-500 max-w-md text-center">Importa la 社員台帳 (maestro empleados) o archivos de gestión de renta.</p>
-    </div>
-    <GlassCard className="p-10 text-center border-dashed border-2 border-gray-700 bg-transparent relative overflow-hidden">
-      <div className="absolute inset-0 bg-gradient-to-b from-green-500/5 to-transparent pointer-events-none"></div>
-      <input type="file" id="fileUpload" className="hidden" onChange={onFileChange} accept=".xlsx, .xlsm" />
-      <label htmlFor="fileUpload" onDragOver={onDragOver} onDragLeave={onDragLeave} onDrop={onDrop} className={`flex flex-col items-center justify-center h-64 cursor-pointer transition-all duration-300 rounded-2xl relative z-10 ${isDragging ? 'scale-105' : ''}`}>
-        {importStatus.type === 'loading' ? (
-          <div className="animate-pulse flex flex-col items-center gap-4"><Loader2 className="w-20 h-20 text-blue-500 animate-spin" /><p className="text-blue-500 font-bold text-2xl">Procesando...</p></div>
-        ) : importStatus.type === 'success' ? (
-          <div className="flex flex-col items-center gap-4"><div className="w-24 h-24 bg-green-500/20 rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(34,197,94,0.4)]"><FileCheck className="w-12 h-12 text-green-400" /></div><p className="text-green-400 font-bold text-3xl">Archivo Validado</p><p className="text-gray-400 text-lg">Listo para sincronizar</p></div>
-        ) : (
-          <div className="flex flex-col items-center gap-6 group">
-            <div className="w-24 h-24 bg-gray-800 rounded-full flex items-center justify-center group-hover:bg-blue-600 transition-all duration-500 shadow-2xl border border-white/5"><UploadCloud className="w-10 h-10 text-gray-400 group-hover:text-white transition-colors" /></div>
-            <div><p className="text-2xl font-bold text-white mb-2 group-hover:text-blue-400 transition-colors">Arrastra tu Excel aquí</p><p className="text-sm text-gray-500">社員台帳 (.xlsx / .xlsm)</p></div>
-          </div>
-        )}
-      </label>
-    </GlassCard>
-    {importStatus.type === 'error' && <div className="bg-red-900/20 border border-red-500/50 p-6 rounded-2xl text-red-200 flex items-center gap-4 animate-in fade-in shadow-lg"><AlertCircle className="w-6 h-6 shrink-0" /><span className="text-lg font-medium">{importStatus.msg}</span></div>}
-    {importStatus.type === 'success' && (
-      <div className="bg-gray-900 border border-green-500/30 rounded-2xl p-8 shadow-2xl animate-in slide-in-from-bottom-10">
-        <div className="flex items-start gap-6">
-          <div className="bg-green-500/20 p-4 rounded-xl"><Database className="w-8 h-8 text-green-500" /></div>
-          <div className="flex-1">
-            <h3 className="text-2xl font-bold text-white mb-3">Confirmación</h3>
-            <div className="bg-black/50 p-6 rounded-xl border border-white/5 mb-8"><pre className="text-sm text-green-400 font-mono whitespace-pre-wrap leading-relaxed">{String(previewSummary)}</pre></div>
-            <button onClick={onSave} className="w-full bg-green-600 hover:bg-green-500 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-3 transition-all text-lg"><span>Ejecutar Sincronización</span><ArrowRight className="w-6 h-6" /></button>
-          </div>
-        </div>
-      </div>
-    )}
-  </div>
-);
+// --- COMPANY INFO (usado en header y settings) ---
 
 const EMPTY_PROPERTY_FORM = { id: null as number | null, name: '', room_number: '', postal_code: '', address_auto: '', address_detail: '', manager_name: '', manager_phone: '', contract_start: new Date().toISOString().split('T')[0], contract_end: '', type: '1K', capacity: 2, rent_cost: 0, rent_price_uns: 0, parking_cost: 0, kanri_hi: 0, billing_mode: 'fixed' as const };
 const EMPTY_TENANT_FORM = { employee_id: '', name: '', name_kana: '', company: '', property_id: '' as string | number, rent_contribution: 0, parking_fee: 0, entry_date: new Date().toISOString().split('T')[0] };
@@ -805,7 +643,7 @@ export default function App() {
           {activeTab === 'reports' && <ReportsView db={db} cycle={cycle} onUpdateTenant={(tid, field, val) => { const v = parseInt(val) || 0; setDb(prev => ({ ...prev, tenants: prev.tenants.map(t => t.id === tid ? { ...t, [field]: v } : t) })); }} onRemoveTenant={(tid) => { const tenant = db.tenants.find(t => t.id === tid); if (!tenant) return; const fee = db.config.defaultCleaningFee || 30000; if (!window.confirm(`¿Dar de baja a ${tenant.name}?\n\nクリーニング費: ¥${fee.toLocaleString()}`)) return; setDb(prev => { const updated = { ...prev, tenants: prev.tenants.map(t => t.id === tid ? { ...t, status: 'inactive' as const, exit_date: new Date().toISOString().split('T')[0], cleaning_fee: fee } : t) }; return autoSplitRent(updated, tenant.property_id); }); }} onAddTenant={(tenantData) => { if (db.tenants.find(t => t.employee_id === tenantData.employee_id && t.status === 'active')) { alert('Este 社員No ya está asignado.'); return; } const newT: Tenant = { ...tenantData, id: generateId(), status: 'active' }; setDb(prev => { const updated = { ...prev, tenants: [...prev.tenants, newT] }; return autoSplitRent(updated, tenantData.property_id); }); }} onDeleteTenant={(tid) => { if (!window.confirm('¿Eliminar registro permanentemente?')) return; setDb(prev => ({ ...prev, tenants: prev.tenants.filter(t => t.id !== tid) })); }} />}
 
           {/* ====== IMPORT ====== */}
-          {activeTab === 'import' && <ImportViewComponent isDragging={isDragging} importStatus={importStatus} previewSummary={previewSummary} onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }} onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }} onDrop={(e) => { e.preventDefault(); setIsDragging(false); if (e.dataTransfer.files.length) processExcelFile(e.dataTransfer.files[0]); }} onFileChange={(e) => e.target.files?.length && processExcelFile(e.target.files[0])} onSave={saveToDatabase} />}
+          {activeTab === 'import' && <ImportView isDragging={isDragging} importStatus={importStatus} previewSummary={previewSummary} onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }} onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }} onDrop={(e) => { e.preventDefault(); setIsDragging(false); if (e.dataTransfer.files.length) processExcelFile(e.dataTransfer.files[0]); }} onFileChange={(e) => e.target.files?.length && processExcelFile(e.target.files[0])} onSave={saveToDatabase} />}
 
           {/* ====== SETTINGS ====== */}
           {activeTab === 'settings' && <SettingsView db={db} setDb={setDb} onDownloadBackup={downloadBackup} onRestoreBackup={restoreBackup} onReset={() => { if (window.confirm('¿Borrar todo?')) resetDb(); }} />}
