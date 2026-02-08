@@ -402,7 +402,10 @@ export default function App() {
     if (!tenant) return;
     if (db.tenants.find(t => t.employee_id === tenant.employee_id && t.status === 'active')) { alert(`社員No ${tenant.employee_id} ya está asignado a otro apartamento.`); return; }
     if (!window.confirm(`¿Reactivar a ${tenant.name}?`)) return;
-    setDb(prev => ({ ...prev, tenants: prev.tenants.map(t => t.id === tid ? { ...t, status: 'active' as const, exit_date: undefined, cleaning_fee: undefined } : t) }));
+    setDb(prev => {
+      const updated = { ...prev, tenants: prev.tenants.map(t => t.id === tid ? { ...t, status: 'active' as const, exit_date: undefined, cleaning_fee: undefined } : t) };
+      return autoSplitRent(updated, tenant.property_id);
+    });
   };
 
   const handleUpdateRentDetails = (tid: number, field: string, val: string) => {
@@ -410,21 +413,26 @@ export default function App() {
     setDb(prev => ({ ...prev, tenants: prev.tenants.map(t => t.id === tid ? { ...t, [field]: v } : t) }));
   };
 
+  // Redistribuir renta equitativamente (para billing_mode='split')
+  const autoSplitRent = (dbState: AppDatabase, propertyId: number): AppDatabase => {
+    const prop = dbState.properties.find(p => p.id === propertyId);
+    if (!prop || prop.billing_mode !== 'split') return dbState;
+    const ts = dbState.tenants.filter(t => t.property_id === propertyId && t.status === 'active');
+    if (ts.length === 0) return dbState;
+    const split = Math.floor((prop.rent_price_uns || 0) / ts.length);
+    const remainder = (prop.rent_price_uns || 0) % ts.length;
+    return { ...dbState, tenants: dbState.tenants.map(t => {
+      if (t.property_id === propertyId && t.status === 'active') {
+        const idx = ts.findIndex(x => x.id === t.id);
+        return { ...t, rent_contribution: idx === 0 ? split + remainder : split };
+      }
+      return t;
+    })};
+  };
+
   const distributeRentEvenly = () => {
     if (!selectedPropertyForRent) return;
-    setDb(prev => {
-      const ts = prev.tenants.filter(t => t.property_id === selectedPropertyForRent.id && t.status === 'active');
-      if (ts.length === 0) return prev;
-      const split = Math.floor(selectedPropertyForRent.rent_price_uns / ts.length);
-      const remainder = selectedPropertyForRent.rent_price_uns % ts.length;
-      return { ...prev, tenants: prev.tenants.map(t => {
-        if (t.property_id === selectedPropertyForRent.id && t.status === 'active') {
-          const idx = ts.findIndex(x => x.id === t.id);
-          return { ...t, rent_contribution: idx === 0 ? split + remainder : split };
-        }
-        return t;
-      })};
-    });
+    setDb(prev => autoSplitRent(prev, selectedPropertyForRent.id));
   };
 
   const handleAddTenant = (e: React.FormEvent) => {
@@ -432,8 +440,12 @@ export default function App() {
     if (!tenantForm.employee_id.trim() || !tenantForm.name.trim()) { alert('社員No y Nombre son obligatorios.'); return; }
     if (!tenantForm.property_id) { alert('Error: propiedad no seleccionada.'); return; }
     if (db.tenants.find(t => t.employee_id === tenantForm.employee_id && t.status === 'active')) { alert('Este 社員No ya está asignado a otro apartamento.'); return; }
-    const newT: Tenant = { id: generateId(), ...tenantForm, property_id: Number(tenantForm.property_id), status: 'active' };
-    setDb(prev => ({ ...prev, tenants: [...prev.tenants, newT] }));
+    const propId = Number(tenantForm.property_id);
+    const newT: Tenant = { id: generateId(), ...tenantForm, property_id: propId, status: 'active' };
+    setDb(prev => {
+      const updated = { ...prev, tenants: [...prev.tenants, newT] };
+      return autoSplitRent(updated, propId);
+    });
     setIsAddTenantModalOpen(false);
     setTenantForm({ employee_id: '', name: '', name_kana: '', company: '', property_id: '', rent_contribution: 0, parking_fee: 0, entry_date: new Date().toISOString().split('T')[0] });
   };
@@ -444,7 +456,10 @@ export default function App() {
     const fee = db.config.defaultCleaningFee || 30000;
     if (!window.confirm(`¿Dar de baja a ${tenant.name}?\n\nSe aplicará クリーニング費 (limpieza): ¥${fee.toLocaleString()}`)) return;
     const exitDate = new Date().toISOString().split('T')[0];
-    setDb(prev => ({ ...prev, tenants: prev.tenants.map(t => t.id === tid ? { ...t, status: 'inactive' as const, exit_date: exitDate, cleaning_fee: fee } : t) }));
+    setDb(prev => {
+      const updated = { ...prev, tenants: prev.tenants.map(t => t.id === tid ? { ...t, status: 'inactive' as const, exit_date: exitDate, cleaning_fee: fee } : t) };
+      return autoSplitRent(updated, tenant.property_id);
+    });
   };
 
   // --- IMPORT ---
@@ -702,7 +717,7 @@ export default function App() {
           )}
 
           {/* ====== REPORTES ====== */}
-          {activeTab === 'reports' && <ReportsView db={db} cycle={cycle} onUpdateTenant={(tid, field, val) => { const v = parseInt(val) || 0; setDb(prev => ({ ...prev, tenants: prev.tenants.map(t => t.id === tid ? { ...t, [field]: v } : t) })); }} onRemoveTenant={(tid) => { const tenant = db.tenants.find(t => t.id === tid); if (!tenant) return; const fee = db.config.defaultCleaningFee || 30000; if (!window.confirm(`¿Dar de baja a ${tenant.name}?\n\nクリーニング費: ¥${fee.toLocaleString()}`)) return; setDb(prev => ({ ...prev, tenants: prev.tenants.map(t => t.id === tid ? { ...t, status: 'inactive' as const, exit_date: new Date().toISOString().split('T')[0], cleaning_fee: fee } : t) })); }} onAddTenant={(tenantData) => { if (db.tenants.find(t => t.employee_id === tenantData.employee_id && t.status === 'active')) { alert('Este 社員No ya está asignado.'); return; } const newT: Tenant = { ...tenantData, id: generateId(), status: 'active' }; setDb(prev => ({ ...prev, tenants: [...prev.tenants, newT] })); }} onDeleteTenant={(tid) => { if (!window.confirm('¿Eliminar registro permanentemente?')) return; setDb(prev => ({ ...prev, tenants: prev.tenants.filter(t => t.id !== tid) })); }} />}
+          {activeTab === 'reports' && <ReportsView db={db} cycle={cycle} onUpdateTenant={(tid, field, val) => { const v = parseInt(val) || 0; setDb(prev => ({ ...prev, tenants: prev.tenants.map(t => t.id === tid ? { ...t, [field]: v } : t) })); }} onRemoveTenant={(tid) => { const tenant = db.tenants.find(t => t.id === tid); if (!tenant) return; const fee = db.config.defaultCleaningFee || 30000; if (!window.confirm(`¿Dar de baja a ${tenant.name}?\n\nクリーニング費: ¥${fee.toLocaleString()}`)) return; setDb(prev => { const updated = { ...prev, tenants: prev.tenants.map(t => t.id === tid ? { ...t, status: 'inactive' as const, exit_date: new Date().toISOString().split('T')[0], cleaning_fee: fee } : t) }; return autoSplitRent(updated, tenant.property_id); }); }} onAddTenant={(tenantData) => { if (db.tenants.find(t => t.employee_id === tenantData.employee_id && t.status === 'active')) { alert('Este 社員No ya está asignado.'); return; } const newT: Tenant = { ...tenantData, id: generateId(), status: 'active' }; setDb(prev => { const updated = { ...prev, tenants: [...prev.tenants, newT] }; return autoSplitRent(updated, tenantData.property_id); }); }} onDeleteTenant={(tid) => { if (!window.confirm('¿Eliminar registro permanentemente?')) return; setDb(prev => ({ ...prev, tenants: prev.tenants.filter(t => t.id !== tid) })); }} />}
 
           {/* ====== IMPORT ====== */}
           {activeTab === 'import' && <ImportViewComponent isDragging={isDragging} importStatus={importStatus} previewSummary={previewSummary} onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }} onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }} onDrop={(e) => { e.preventDefault(); setIsDragging(false); if (e.dataTransfer.files.length) processExcelFile(e.dataTransfer.files[0]); }} onFileChange={(e) => e.target.files?.length && processExcelFile(e.target.files[0])} onSave={saveToDatabase} />}
