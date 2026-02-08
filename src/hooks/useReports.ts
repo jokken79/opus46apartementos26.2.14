@@ -14,27 +14,9 @@ import {
   PayrollDeductionRow,
   MonthlySnapshot,
   ReportHistory,
+  AppDatabase,
 } from '../types/database';
 import { unsDB } from '../db/dexie';
-
-interface ReportDatabase {
-  properties: Array<{
-    id: number; name: string; room_number?: string; address: string;
-    type?: string; capacity: number; rent_cost: number; rent_price_uns: number;
-    parking_cost: number; kanri_hi?: number; billing_mode?: 'split' | 'fixed';
-    contract_start?: string; contract_end?: string;
-  }>;
-  tenants: Array<{
-    id: number; employee_id: string; name: string; name_kana: string;
-    company?: string; property_id: number; rent_contribution: number;
-    parking_fee: number; entry_date?: string; exit_date?: string;
-    status: 'active' | 'inactive';
-  }>;
-  employees: Array<{
-    id: string; name: string; name_kana: string; company: string;
-  }>;
-  config: { closingDay: number; companyName: string; };
-}
 
 // Extraer zona/distrito del nombre o dirección
 function extractArea(name: string, address: string): string {
@@ -57,7 +39,7 @@ function extractArea(name: string, address: string): string {
   return '';
 }
 
-export function useReports(db: ReportDatabase) {
+export function useReports(db: AppDatabase) {
 
   // Propiedades activas (contrato vigente)
   const activeProperties = useMemo(() => {

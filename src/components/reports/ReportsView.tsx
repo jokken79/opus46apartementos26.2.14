@@ -13,15 +13,10 @@ import {
 } from 'lucide-react';
 import { useReports } from '../../hooks/useReports';
 import { useReportExport } from '../../hooks/useReportExport';
-import { MonthlySnapshot } from '../../types/database';
+import { MonthlySnapshot, AppDatabase } from '../../types/database';
 
 interface ReportsViewProps {
-  db: {
-    properties: Array<any>;
-    tenants: Array<any>;
-    employees: Array<any>;
-    config: { closingDay: number; companyName: string; defaultCleaningFee?: number; };
-  };
+  db: AppDatabase;
   cycle: { start: string; end: string; month: string; };
   onUpdateTenant?: (tid: number, field: string, val: string) => void;
   onRemoveTenant?: (tid: number) => void;

@@ -1,6 +1,7 @@
 /**
  * ESQUEMAS DE VALIDACIÓN - Zod
  * Validación centralizada y reutilizable
+ * Sincronizado con types/database.ts
  */
 
 import { z } from 'zod';
@@ -10,19 +11,21 @@ export const PropertySchema = z.object({
   id: z.number().optional(),
   name: z.string().min(2, 'Nombre debe tener al menos 2 caracteres').max(100),
   room_number: z.string().optional(),
-  postal_code: z.string().regex(/^\d{3}-?\d{4}$/, 'Código postal inválido (formato: 123-4567)').optional(),
+  postal_code: z.string().regex(/^\d{3}-?\d{4}$/, 'Código postal inválido (formato: 123-4567)').optional().or(z.string().length(0)),
   address_auto: z.string().optional(),
   address_detail: z.string().optional(),
-  address: z.string().min(5, 'Dirección debe tener al menos 5 caracteres'),
-  type: z.string().default('1K'),
+  address: z.string().min(1, 'Dirección requerida'),
+  type: z.string().optional(),
   capacity: z.number().int().min(1, 'Capacidad mínima: 1').max(20),
   rent_cost: z.number().nonnegative('Costo no puede ser negativo'),
   rent_price_uns: z.number().nonnegative('Precio UNS no puede ser negativo'),
   parking_cost: z.number().nonnegative('Costo parking no puede ser negativo'),
+  kanri_hi: z.number().nonnegative('管理費 no puede ser negativo').optional(),
+  billing_mode: (z.enum as any)(['split', 'fixed']).optional(),
   manager_name: z.string().optional(),
-  manager_phone: z.string().regex(/^\d{10,11}$/, 'Teléfono debe tener 10-11 dígitos').optional(),
-  contract_start: z.string().datetime().optional(),
-  contract_end: z.string().datetime().optional(),
+  manager_phone: z.string().optional().or(z.string().length(0)),
+  contract_start: z.string().optional().or(z.string().length(0)),
+  contract_end: z.string().optional().or(z.string().length(0)),
 });
 
 // ============ TENANT ============
@@ -30,43 +33,42 @@ export const TenantSchema = z.object({
   id: z.number().optional(),
   employee_id: z.string().min(1, 'ID empleado requerido').max(50),
   name: z.string().min(1, 'Nombre requerido'),
-  name_kana: z.string().min(1, 'Nombre en Kana requerido'),
+  name_kana: z.string().default(''),
+  company: z.string().optional(),
   property_id: z.number().int().positive('ID propiedad inválido'),
   rent_contribution: z.number().nonnegative('Renta no puede ser negativa'),
   parking_fee: z.number().nonnegative('Parking no puede ser negativo'),
-  entry_date: z.string().datetime(),
-  status: z.string().default('active'),
+  entry_date: z.string().optional().or(z.string().length(0)),
+  exit_date: z.string().optional(),
+  cleaning_fee: z.number().nonnegative().optional(),
+  status: (z.enum as any)(['active', 'inactive']).default('active'),
 });
 
 // ============ EMPLOYEE ============
 export const EmployeeSchema = z.object({
   id: z.string().min(1, 'ID requerido'),
   name: z.string().min(1, 'Nombre requerido'),
-  name_kana: z.string().min(1, 'Nombre kana requerido'),
+  name_kana: z.string().default(''),
   company: z.string().default(''),
-  full_data: z.any().optional(),
+  full_data: z.record(z.string(), z.unknown()).optional(),
 });
 
-// ============ IMPORTACIÓN EXCEL ============
-export const ExcelPropertyRowSchema = z.object({
-  'ｱﾊﾟｰﾄ': z.string(),
-  '住所': z.string().optional(),
-  '入居人数': z.any().optional(),
-  '家賃': z.any().optional(),
-  'USN家賃': z.any().optional(),
-  '駐車場代': z.any().optional(),
-  '契約開始日': z.string().optional(),
-  '契約終了': z.string().optional(),
+// ============ CONFIG ============
+export const AppConfigSchema = z.object({
+  companyName: z.string().min(1),
+  closingDay: z.number().int(),
+  defaultCleaningFee: z.number().nonnegative(),
 });
 
-export const ExcelTenantRowSchema = z.object({
-  'ｱﾊﾟｰﾄ': z.string(),
-  'カナ': z.string(),
-  '家賃': z.any().optional(),
-  '駐車場': z.any().optional(),
-  '入居': z.string().optional(),
+// ============ BACKUP (validación de datos importados) ============
+export const BackupSchema = z.object({
+  properties: z.array(z.object({ id: z.number(), name: z.string() }).passthrough()),
+  tenants: z.array(z.object({ id: z.number(), property_id: z.number() }).passthrough()),
+  employees: z.array(z.object({ id: z.string(), name: z.string() }).passthrough()),
+  config: AppConfigSchema.partial(),
 });
 
+// ============ EXCEL ============
 export const ExcelEmployeeRowSchema = z.object({
   '社員No': z.any(),
   '氏名': z.string(),
@@ -76,94 +78,45 @@ export const ExcelEmployeeRowSchema = z.object({
 
 // ============ VALIDADORES FUNCIONALES ============
 
-/**
- * Valida una propiedad completa
- */
 export function validateProperty(data: unknown) {
-  try {
-    return { success: true, data: PropertySchema.parse(data) };
-  } catch (error: any) {
-    if (error.issues) {
-      return {
-        success: false,
-        errors: error.issues.map((e: any) => ({
-          field: e.path.join('.'),
-          message: e.message,
-        })),
-      };
-    }
-    throw error;
-  }
+  const result = PropertySchema.safeParse(data);
+  if (result.success) return { success: true as const, data: result.data };
+  return {
+    success: false as const,
+    errors: result.error.issues.map(e => ({
+      field: e.path.join('.'),
+      message: e.message,
+    })),
+  };
 }
 
-/**
- * Valida un inquilino completo
- */
 export function validateTenant(data: unknown) {
-  try {
-    return { success: true, data: TenantSchema.parse(data) };
-  } catch (error: any) {
-    if (error.issues) {
-      return {
-        success: false,
-        errors: error.issues.map((e: any) => ({
-          field: e.path.join('.'),
-          message: e.message,
-        })),
-      };
-    }
-    throw error;
-  }
+  const result = TenantSchema.safeParse(data);
+  if (result.success) return { success: true as const, data: result.data };
+  return {
+    success: false as const,
+    errors: result.error.issues.map(e => ({
+      field: e.path.join('.'),
+      message: e.message,
+    })),
+  };
 }
 
-/**
- * Valida un empleado
- */
-export function validateEmployee(data: unknown) {
-  try {
-    return { success: true, data: EmployeeSchema.parse(data) };
-  } catch (error: any) {
-    if (error.issues) {
-      return {
-        success: false,
-        errors: error.issues.map((e: any) => ({
-          field: e.path.join('.'),
-          message: e.message,
-        })),
-      };
-    }
-    throw error;
-  }
+export function validateBackup(data: unknown) {
+  const result = BackupSchema.safeParse(data);
+  if (result.success) return { success: true as const, data: result.data };
+  return {
+    success: false as const,
+    errors: result.error.issues.map(e => ({
+      field: e.path.join('.'),
+      message: e.message,
+    })),
+  };
 }
 
-/**
- * Valida una fila de Excel para propiedades
- */
-export function validateExcelPropertyRow(row: any) {
-  return ExcelPropertyRowSchema.safeParse(row);
-}
-
-/**
- * Valida una fila de Excel para inquilinos
- */
-export function validateExcelTenantRow(row: any) {
-  return ExcelTenantRowSchema.safeParse(row);
-}
-
-/**
- * Valida una fila de Excel para empleados
- */
-export function validateExcelEmployeeRow(row: any) {
-  return ExcelEmployeeRowSchema.safeParse(row);
-}
-
-/**
- * Validador compuesto para verificar relaciones (FK)
- */
-export function validateDataIntegrity(db: any) {
+export function validateDataIntegrity(db: { properties: any[]; tenants: any[] }) {
   const errors: Array<{ type: string; message: string }> = [];
 
-  // Verificar que todos los tenant.property_id existan en properties
   for (const tenant of db.tenants || []) {
     if (!db.properties.find((p: any) => p.id === tenant.property_id)) {
       errors.push({
@@ -173,7 +126,6 @@ export function validateDataIntegrity(db: any) {
     }
   }
 
-  // Verificar capacidad de propiedades
   for (const property of db.properties || []) {
     const tenantCount = db.tenants.filter((t: any) => t.property_id === property.id && t.status === 'active').length;
     if (tenantCount > property.capacity) {

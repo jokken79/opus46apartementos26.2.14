@@ -1,6 +1,6 @@
 /**
  * TIPOS PRINCIPALES - UNS Estate OS
- * Estructura centralizada de tipos TypeScript
+ * Fuente única de verdad para todas las interfaces TypeScript
  */
 
 // ============ PROPIEDAD ============
@@ -9,28 +9,28 @@ export interface Property {
   name: string;
   room_number?: string;
   postal_code?: string;
-  address_auto: string;
-  address_detail?: string;
   address: string; // Dirección completa formateada
-  type: string; // 1K, 2K, etc
+  address_auto?: string;
+  address_detail?: string;
+  type?: string; // 1K, 2K, etc
   capacity: number;
 
   // Financiero
   rent_cost: number; // Costo real (a propietario)
   rent_price_uns: number; // Precio objetivo UNS
   parking_cost: number;
+  kanri_hi?: number; // 管理費
+
+  // Cobro
+  billing_mode?: 'split' | 'fixed'; // 均等割り o 個別設定
 
   // Administración
   manager_name?: string;
   manager_phone?: string;
 
   // Contrato
-  contract_start: string; // YYYY-MM-DD
+  contract_start?: string; // YYYY-MM-DD
   contract_end?: string;
-
-  // Metadata
-  created_at?: string;
-  updated_at?: string;
 }
 
 // ============ INQUILINO/ASIGNACIÓN ============
@@ -39,13 +39,14 @@ export interface Tenant {
   employee_id: string; // ID empleado (社員№)
   name: string;
   name_kana: string;
+  company?: string; // 派遣先
   property_id: number; // FK Property
   rent_contribution: number; // ¥ asignado
   parking_fee: number; // ¥ parking
-  entry_date: string; // YYYY-MM-DD
+  entry_date?: string; // YYYY-MM-DD
+  exit_date?: string; // YYYY-MM-DD (al dar de baja)
+  cleaning_fee?: number; // クリーニング費
   status: 'active' | 'inactive';
-  created_at?: string;
-  updated_at?: string;
 }
 
 // ============ EMPLEADO ============
@@ -54,33 +55,28 @@ export interface Employee {
   name: string;
   name_kana: string;
   company: string;
-  full_data?: Record<string, any>; // Datos raw del Excel
-  created_at?: string;
-  updated_at?: string;
+  full_data: Record<string, unknown>; // Datos raw del Excel
 }
 
 // ============ CONFIGURACIÓN ============
-export interface Config {
+export interface AppConfig {
   companyName: string;
-  closingDay: 0 | 15 | 20 | 25; // Día de cierre de mes
+  closingDay: number; // 0=末日, 15, 20, 25
+  defaultCleaningFee: number;
 }
 
-// ============ BASE DE DATOS PRINCIPAL ============
-export interface Database {
+// ============ BASE DE DATOS ============
+export interface AppDatabase {
   properties: Property[];
   tenants: Tenant[];
   employees: Employee[];
-  config: Config;
-  // Metadata
-  version: string;
-  last_sync: string;
+  config: AppConfig;
 }
 
+// ============ ALERTAS ============
 export interface AlertItem {
   type: 'warning' | 'danger';
   msg: string;
-  severity?: 'low' | 'medium' | 'high';
-  timestamp?: string;
 }
 
 // ============ NOTIFICACIONES ============
@@ -89,62 +85,54 @@ export interface Notification {
   type: 'success' | 'error' | 'warning' | 'info';
   title: string;
   message: string;
-  duration?: number; // ms, undefined = persistente
-  action?: {
-    label: string;
-    onClick: () => void;
-  };
+  duration?: number;
+  action?: { label: string; onClick: () => void; };
   timestamp: string;
 }
 
-
 // ============ REPORTES MENSUALES ============
 
-// Fila del reporte por propiedad (detalle por habitación)
 export interface PropertyReportRow {
   no: number;
-  area: string; // 地区
-  property_name: string; // アパート名
-  room_number: string; // 部屋番号
-  layout: string; // 間取 (1K, 2DK...)
-  occupant_count: number; // 入居人数
-  vacancy: number; // 空状況
-  rent_cost: number; // 契約家賃
-  rent_target: number; // 設定家賃
-  profit: number; // 利益
-  notes: string; // 備考
+  area: string;
+  property_name: string;
+  room_number: string;
+  layout: string;
+  occupant_count: number;
+  vacancy: number;
+  rent_cost: number;
+  rent_target: number;
+  profit: number;
+  notes: string;
 }
 
-// Fila del resumen por empresa (派遣先)
 export interface CompanyReportRow {
-  company: string; // 派遣先名
-  property_count: number; // 物件数
-  rent_cost: number; // 契約家賃 total
-  rent_target: number; // 設定家賃 total
-  profit: number; // 利益
-  payroll_deduction: number; // 支給家賃控除 (descuento nómina)
-  monthly_profit: number; // 月家賃利益
+  company: string;
+  property_count: number;
+  rent_cost: number;
+  rent_target: number;
+  profit: number;
+  payroll_deduction: number;
+  monthly_profit: number;
 }
 
-// Fila de descuento nómina (para contabilidad)
 export interface PayrollDeductionRow {
-  employee_id: string; // 社員No
-  company: string; // 派遣先
-  name_kana: string; // カナ
-  name: string; // 氏名
-  property_name: string; // アパート名
-  rent_deduction: number; // 家賃控除額
-  parking_deduction: number; // 駐車場控除額
-  total_deduction: number; // 控除合計
+  employee_id: string;
+  company: string;
+  name_kana: string;
+  name: string;
+  property_name: string;
+  rent_deduction: number;
+  parking_deduction: number;
+  total_deduction: number;
 }
 
-// Snapshot de cierre mensual
 export interface MonthlySnapshot {
   id: string;
-  cycle_month: string; // "2026-02" formato
+  cycle_month: string;
   cycle_start: string;
   cycle_end: string;
-  closed_at: string; // Timestamp del cierre
+  closed_at: string;
   total_properties: number;
   total_tenants: number;
   total_collected: number;
@@ -157,9 +145,7 @@ export interface MonthlySnapshot {
   payroll_detail: PayrollDeductionRow[];
 }
 
-// Almacenamiento de histórico de reportes
 export interface ReportHistory {
   snapshots: MonthlySnapshot[];
   version: string;
 }
-

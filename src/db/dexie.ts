@@ -3,52 +3,14 @@
  * IndexedDB schema para reemplazar localStorage
  */
 import Dexie, { type Table } from 'dexie';
+import type { Property, Tenant, Employee, MonthlySnapshot } from '../types/database';
 
-// Interfaces alineadas con App.tsx (las interfaces "inline" que usa el app)
-export interface DBProperty {
-  id: number; name: string; room_number?: string; postal_code?: string;
-  address: string; address_auto?: string; address_detail?: string;
-  manager_name?: string; manager_phone?: string;
-  contract_start?: string; contract_end?: string; type?: string;
-  capacity: number; rent_cost: number; rent_price_uns: number;
-  parking_cost: number; kanri_hi?: number;
-  billing_mode?: 'split' | 'fixed';
-}
-
-export interface DBTenant {
-  id: number; employee_id: string; name: string; name_kana: string;
-  company?: string; property_id: number; rent_contribution: number; parking_fee: number;
-  entry_date?: string; exit_date?: string; cleaning_fee?: number; status: 'active' | 'inactive';
-}
-
-export interface DBEmployee {
-  id: string; name: string; name_kana: string; company: string;
-  full_data: Record<string, unknown>;
-}
-
+// Tipos específicos de IndexedDB (añaden la key para config y meta)
 export interface DBConfig {
   key: string; // siempre 'main'
   companyName: string;
   closingDay: number;
   defaultCleaningFee: number;
-}
-
-export interface DBSnapshot {
-  id: string;
-  cycle_month: string;
-  cycle_start: string;
-  cycle_end: string;
-  closed_at: string;
-  total_properties: number;
-  total_tenants: number;
-  total_collected: number;
-  total_cost: number;
-  total_target: number;
-  profit: number;
-  occupancy_rate: number;
-  company_summary: any[];
-  property_detail: any[];
-  payroll_detail: any[];
 }
 
 export interface DBMeta {
@@ -59,11 +21,11 @@ export interface DBMeta {
 }
 
 class UNSDatabase extends Dexie {
-  properties!: Table<DBProperty, number>;
-  tenants!: Table<DBTenant, number>;
-  employees!: Table<DBEmployee, string>;
+  properties!: Table<Property, number>;
+  tenants!: Table<Tenant, number>;
+  employees!: Table<Employee, string>;
   config!: Table<DBConfig, string>;
-  snapshots!: Table<DBSnapshot, string>;
+  snapshots!: Table<MonthlySnapshot, string>;
   meta!: Table<DBMeta, string>;
 
   constructor() {

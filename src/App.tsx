@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { ReportsView } from './components/reports/ReportsView';
 import { useIndexedDB } from './hooks/useIndexedDB';
+import type { Property, Tenant, Employee, AppConfig, AppDatabase, AlertItem } from './types/database';
 
 // --- SheetJS ---
 const useLoadSheetJS = () => {
@@ -20,26 +21,6 @@ const useLoadSheetJS = () => {
     }
   }, []);
 };
-
-// --- TIPOS ---
-interface Property {
-  id: number; name: string; room_number?: string; postal_code?: string;
-  address: string; address_auto?: string; address_detail?: string;
-  manager_name?: string; manager_phone?: string;
-  contract_start?: string; contract_end?: string; type?: string;
-  capacity: number; rent_cost: number; rent_price_uns: number;
-  parking_cost: number; kanri_hi?: number;
-  billing_mode?: 'split' | 'fixed';
-}
-interface Tenant {
-  id: number; employee_id: string; name: string; name_kana: string;
-  company?: string; property_id: number; rent_contribution: number; parking_fee: number;
-  entry_date?: string; exit_date?: string; cleaning_fee?: number; status: 'active' | 'inactive';
-}
-interface Employee { id: string; name: string; name_kana: string; company: string; full_data: Record<string, unknown>; }
-interface AppConfig { companyName: string; closingDay: number; defaultCleaningFee: number; }
-interface AppDatabase { properties: Property[]; tenants: Tenant[]; employees: Employee[]; config: AppConfig; }
-interface AlertItem { type: 'warning' | 'danger'; msg: string; }
 
 // --- 日割り計算 (Pro-rata) ---
 const calculateProRata = (monthlyAmount: number, entryDate: string) => {

@@ -12,20 +12,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { unsDB } from '../db/dexie';
 import { migrateFromLocalStorage } from '../db/migrate';
-
-// Interfaz idéntica a la de App.tsx
-interface AppConfig {
-  companyName: string;
-  closingDay: number;
-  defaultCleaningFee: number;
-}
-
-interface AppDatabase {
-  properties: Array<any>;
-  tenants: Array<any>;
-  employees: Array<any>;
-  config: AppConfig;
-}
+import type { AppDatabase } from '../types/database';
 
 const INITIAL_DB: AppDatabase = {
   properties: [],
