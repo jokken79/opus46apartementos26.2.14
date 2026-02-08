@@ -155,7 +155,7 @@ export function useReportExport() {
   // EXPORTAR A PDF (via window.print)
   // ========================================
   const exportToPDF = useCallback((
-    reportType: 'property' | 'company' | 'payroll',
+    reportType: 'property' | 'company' | 'payroll' | 'tenants',
     title: string,
   ) => {
     // Capturar la tabla visible del reporte activo

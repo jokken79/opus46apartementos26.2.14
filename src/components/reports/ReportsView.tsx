@@ -8,7 +8,7 @@ import React, { useState, useMemo } from 'react';
 import {
   Building, Users, DollarSign, Download, FileText, Printer,
   TrendingUp, TrendingDown, Calendar, Save, Trash2, BarChart3,
-  ChevronDown, ChevronUp, ArrowRight,
+  ChevronDown, ChevronUp, ArrowRight, Home, AlertCircle,
 } from 'lucide-react';
 import { useReports } from '../../hooks/useReports';
 import { useReportExport } from '../../hooks/useReportExport';
@@ -24,7 +24,7 @@ interface ReportsViewProps {
   cycle: { start: string; end: string; month: string; };
 }
 
-type ReportTab = 'property' | 'company' | 'payroll' | 'history';
+type ReportTab = 'property' | 'company' | 'payroll' | 'tenants' | 'history';
 
 export const ReportsView: React.FC<ReportsViewProps> = ({ db, cycle }) => {
   const [activeReport, setActiveReport] = useState<ReportTab>('company');
@@ -66,6 +66,50 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ db, cycle }) => {
       total_deduction: data.reduce((a, r) => a + r.total_deduction, 0),
     };
   }, [filteredPayroll]);
+
+  // Datos agrupados por propiedad con inquilinos (家賃控除 vista)
+  const tenantsByProperty = useMemo(() => {
+    const activeProps = db.properties.filter(p => {
+      if (!p.contract_end) return true;
+      const d = new Date(p.contract_end);
+      return isNaN(d.getTime()) || d > new Date();
+    });
+
+    return activeProps.map(p => {
+      const allTenants = db.tenants.filter(t => t.property_id === p.id);
+      const active = allTenants.filter(t => t.status === 'active');
+      const inactive = allTenants.filter(t => t.status === 'inactive');
+      const totalCost = (p.rent_cost || 0) + (p.kanri_hi || 0) + (p.parking_cost || 0);
+      const totalCollected = active.reduce((a: number, t: any) => a + (t.rent_contribution || 0) + (t.parking_fee || 0), 0);
+
+      // Alerta de contrato
+      let contractAlert = '';
+      if (p.contract_end) {
+        const diff = Math.ceil((new Date(p.contract_end).getTime() - Date.now()) / 86400000);
+        if (diff <= 0) contractAlert = '契約期限切れ';
+        else if (diff <= 60) contractAlert = `${diff}日で満了`;
+      }
+
+      return {
+        property: p,
+        activeTenants: active,
+        inactiveTenants: inactive,
+        totalCost,
+        rentTarget: p.rent_price_uns || 0,
+        totalCollected,
+        contractAlert,
+      };
+    }).filter(g => g.activeTenants.length > 0 || g.inactiveTenants.length > 0);
+  }, [db.properties, db.tenants]);
+
+  const tenantsByPropertyTotals = useMemo(() => {
+    return {
+      totalCost: tenantsByProperty.reduce((a, g) => a + g.totalCost, 0),
+      totalTarget: tenantsByProperty.reduce((a, g) => a + g.rentTarget, 0),
+      totalCollected: tenantsByProperty.reduce((a, g) => a + g.totalCollected, 0),
+      totalActive: tenantsByProperty.reduce((a, g) => a + g.activeTenants.length, 0),
+    };
+  }, [tenantsByProperty]);
 
   // Ciclo actual como string YYYY-MM
   const currentCycleMonth = useMemo(() => {
@@ -115,6 +159,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ db, cycle }) => {
   const reportTabs: { key: ReportTab; label: string; labelJa: string; icon: React.ComponentType<any> }[] = [
     { key: 'company', label: 'Por Empresa', labelJa: '企業別', icon: BarChart3 },
     { key: 'payroll', label: 'Nómina', labelJa: '給与控除', icon: DollarSign },
+    { key: 'tenants', label: 'Inquilinos', labelJa: '家賃控除', icon: Home },
     { key: 'property', label: 'Por Propiedad', labelJa: '物件別', icon: Building },
     { key: 'history', label: 'Histórico', labelJa: '月次履歴', icon: Calendar },
   ];
@@ -141,7 +186,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ db, cycle }) => {
             <Download className="w-4 h-4" /> Excel
           </button>
           <button
-            onClick={() => exportToPDF(activeReport === 'history' ? 'company' : activeReport, `Reporte ${activeReport} — ${cycle.month}`)}
+            onClick={() => exportToPDF(activeReport === 'history' ? 'company' : (activeReport as any), `Reporte ${activeReport} — ${cycle.month}`)}
             className="bg-red-600 hover:bg-red-500 text-white px-4 py-2.5 rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-red-500/20 transition"
           >
             <Printer className="w-4 h-4" /> PDF
@@ -298,6 +343,111 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ db, cycle }) => {
               </tfoot>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* ====== REPORTE: INQUILINOS POR PROPIEDAD (家賃控除) ====== */}
+      {activeReport === 'tenants' && (
+        <div className="space-y-4" id="report-table-tenants">
+          {/* Totales arriba */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="rounded-xl border border-white/10 bg-[#1a1d24]/80 p-3 text-center">
+              <div className="text-[9px] text-gray-500 uppercase font-bold">物件数</div>
+              <div className="text-lg font-black text-white font-mono">{tenantsByProperty.length}</div>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-[#1a1d24]/80 p-3 text-center">
+              <div className="text-[9px] text-gray-500 uppercase font-bold">入居者数</div>
+              <div className="text-lg font-black text-white font-mono">{tenantsByPropertyTotals.totalActive}名</div>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-[#1a1d24]/80 p-3 text-center">
+              <div className="text-[9px] text-gray-500 uppercase font-bold">家賃合計</div>
+              <div className="text-lg font-black text-green-400 font-mono">¥{tenantsByPropertyTotals.totalCollected.toLocaleString()}</div>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-[#1a1d24]/80 p-3 text-center">
+              <div className="text-[9px] text-gray-500 uppercase font-bold">契約家賃合計</div>
+              <div className="text-lg font-black text-blue-400 font-mono">¥{tenantsByPropertyTotals.totalTarget.toLocaleString()}</div>
+            </div>
+          </div>
+
+          {/* Bloques por propiedad */}
+          {tenantsByProperty.map((group) => {
+            const p = group.property;
+            const displayName = `${p.name}${p.room_number ? `　${p.room_number}` : ''}`;
+            return (
+              <div key={p.id} className="rounded-2xl border border-white/10 bg-[#1a1d24]/80 backdrop-blur-md shadow-xl overflow-hidden">
+                {/* Header de propiedad (barra coloreada como Excel) */}
+                <div className={`px-5 py-3 flex items-center justify-between ${
+                  group.contractAlert ? 'bg-yellow-600/20 border-b border-yellow-500/30' : 'bg-blue-600/15 border-b border-blue-500/20'
+                }`}>
+                  <div className="flex items-center gap-3">
+                    <Home className="w-5 h-5 text-blue-400" />
+                    <div>
+                      <span className="font-black text-white text-base">{displayName}</span>
+                      {p.type && <span className="text-gray-400 text-xs ml-2">({p.type})</span>}
+                    </div>
+                    {group.contractAlert && (
+                      <span className="bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded text-[10px] font-bold border border-yellow-500/30 flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3" /> {group.contractAlert}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="text-right">
+                      <div className="text-[9px] text-gray-500 uppercase">契約家賃</div>
+                      <div className="font-mono font-bold text-gray-300">¥{group.totalCost.toLocaleString()}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-[9px] text-gray-500 uppercase">設定家賃</div>
+                      <div className="font-mono font-bold text-blue-400">¥{group.rentTarget.toLocaleString()}</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Tabla de inquilinos */}
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-black/30">
+                      <th className="text-left px-4 py-2 text-[10px] text-gray-500 uppercase font-bold">入居日</th>
+                      <th className="text-left px-3 py-2 text-[10px] text-gray-500 uppercase font-bold">退去日</th>
+                      <th className="text-left px-3 py-2 text-[10px] text-gray-500 uppercase font-bold">社員番号</th>
+                      <th className="text-left px-3 py-2 text-[10px] text-gray-500 uppercase font-bold">職場</th>
+                      <th className="text-left px-3 py-2 text-[10px] text-gray-500 uppercase font-bold">名前</th>
+                      <th className="text-left px-3 py-2 text-[10px] text-gray-500 uppercase font-bold">カナ</th>
+                      <th className="text-right px-3 py-2 text-[10px] text-gray-500 uppercase font-bold">家賃</th>
+                      <th className="text-right px-4 py-2 text-[10px] text-gray-500 uppercase font-bold">駐車場</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {group.activeTenants.map((t: any) => (
+                      <tr key={t.id} className="border-b border-white/5 hover:bg-white/5 transition">
+                        <td className="px-4 py-2.5 font-mono text-gray-300 text-xs">{t.entry_date || '—'}</td>
+                        <td className="px-3 py-2.5 font-mono text-gray-500 text-xs">{t.exit_date || ''}</td>
+                        <td className="px-3 py-2.5 font-mono text-gray-300">{t.employee_id}</td>
+                        <td className="px-3 py-2.5 text-gray-400">{t.company || ''}</td>
+                        <td className="px-3 py-2.5 font-bold text-white">{t.name}</td>
+                        <td className="px-3 py-2.5 text-gray-400">{t.name_kana}</td>
+                        <td className="px-3 py-2.5 text-right font-mono text-green-400">¥{(t.rent_contribution || 0).toLocaleString()}</td>
+                        <td className="px-4 py-2.5 text-right font-mono text-blue-400">{t.parking_fee ? `¥${t.parking_fee.toLocaleString()}` : ''}</td>
+                      </tr>
+                    ))}
+                    {/* Inquilinos inactivos (históricos) */}
+                    {group.inactiveTenants.map((t: any) => (
+                      <tr key={t.id} className="border-b border-white/5 opacity-40">
+                        <td className="px-4 py-2 font-mono text-gray-500 text-xs">{t.entry_date || '—'}</td>
+                        <td className="px-3 py-2 font-mono text-red-400 text-xs font-bold">{t.exit_date || '—'}</td>
+                        <td className="px-3 py-2 font-mono text-gray-500">{t.employee_id}</td>
+                        <td className="px-3 py-2 text-gray-600">{t.company || ''}</td>
+                        <td className="px-3 py-2 text-gray-500 line-through">{t.name}</td>
+                        <td className="px-3 py-2 text-gray-600">{t.name_kana}</td>
+                        <td className="px-3 py-2 text-right font-mono text-gray-600">¥{(t.rent_contribution || 0).toLocaleString()}</td>
+                        <td className="px-4 py-2 text-right font-mono text-gray-600">{t.parking_fee ? `¥${t.parking_fee.toLocaleString()}` : ''}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          })}
         </div>
       )}
 
