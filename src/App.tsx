@@ -344,8 +344,11 @@ export default function App() {
     setAddressSearchError(''); const zip = propertyForm.postal_code.replace(/-/g, '');
     if (zip.length !== 7) { setAddressSearchError('7 dígitos.'); return; }
     setIsSearchingAddress(true);
-    try { const r = await fetch(`https://zipcloud.ibsnet.co.jp/api/search?zipcode=${zip}`); const d = await r.json(); if (d.results) { const a = d.results[0]; setPropertyForm((p: any) => ({ ...p, address_auto: `${a.address1}${a.address2}${a.address3}` })); } else setAddressSearchError('No encontrado.'); }
-    catch { setAddressSearchError('Error de conexión.'); } finally { setIsSearchingAddress(false); }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    try { const r = await fetch(`https://zipcloud.ibsnet.co.jp/api/search?zipcode=${zip}`, { signal: controller.signal }); const d = await r.json(); if (d.results) { const a = d.results[0]; setPropertyForm((p: any) => ({ ...p, address_auto: `${a.address1}${a.address2}${a.address3}` })); } else setAddressSearchError('No encontrado.'); }
+    catch (err) { setAddressSearchError(err instanceof DOMException && err.name === 'AbortError' ? 'Timeout (10s). Reintentar.' : 'Error de conexión.'); }
+    finally { clearTimeout(timeout); setIsSearchingAddress(false); }
   };
 
   const uniqueCompanies = useMemo(() => {
@@ -541,7 +544,7 @@ export default function App() {
         </div>
         <div className="flex items-center bg-[#15171c] border border-white/10 rounded-full px-3 py-2 flex-1 mx-3 md:mx-0 md:flex-none md:w-96 focus-within:border-blue-500/50 transition-all group">
           <Search className="w-4 h-4 text-gray-500 group-focus-within:text-blue-500 transition-colors shrink-0" />
-          <input type="text" placeholder="Buscar..." className="bg-transparent border-none outline-none text-sm text-white w-full ml-2 placeholder-gray-600" value={searchTerm} onChange={(e) => { setSearchTerm(e.target.value); if (e.target.value) setActiveTab('properties'); }} />
+          <input type="text" placeholder="Buscar..." className="bg-transparent border-none outline-none text-sm text-white w-full ml-2 placeholder-gray-600" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && searchTerm) setActiveTab('properties'); }} />
           {searchTerm && <button onClick={() => setSearchTerm('')} className="text-gray-500 hover:text-white shrink-0"><X className="w-3.5 h-3.5"/></button>}
         </div>
         <div className="flex items-center gap-2">

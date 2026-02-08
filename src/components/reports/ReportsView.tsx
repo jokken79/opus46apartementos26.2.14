@@ -148,11 +148,11 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ db, cycle, onUpdateTen
     };
   }, [tenantsByProperty]);
 
-  // Ciclo actual como string YYYY-MM
+  // Ciclo actual como string YYYY-MM (recalcula si cambia el ciclo)
   const currentCycleMonth = useMemo(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  }, []);
+  }, [cycle.month]);
 
   // Verificar si ya se cerró el mes actual
   const isCurrentMonthClosed = useMemo(() => {
@@ -522,14 +522,14 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ db, cycle, onUpdateTen
                           {/* Edición inline de renta */}
                           <td className="px-3 py-1 text-right">
                             {isEditing ? (
-                              <input type="number" min="0" step="1000" className="w-24 bg-black border border-green-500/50 p-1.5 rounded text-green-400 font-mono text-sm text-right outline-none" defaultValue={t.rent_contribution || 0} onBlur={e => onUpdateTenant?.(t.id, 'rent_contribution', e.target.value)} />
+                              <input key={`rent-${t.id}-${t.rent_contribution}`} type="number" min="0" step="1000" className="w-24 bg-black border border-green-500/50 p-1.5 rounded text-green-400 font-mono text-sm text-right outline-none" defaultValue={t.rent_contribution || 0} onBlur={e => onUpdateTenant?.(t.id, 'rent_contribution', e.target.value)} />
                             ) : (
                               <span className="font-mono text-green-400 cursor-pointer hover:underline" onClick={() => setEditingTenantId(t.id)}>¥{(t.rent_contribution || 0).toLocaleString()}</span>
                             )}
                           </td>
                           <td className="px-3 py-1 text-right">
                             {isEditing ? (
-                              <input type="number" min="0" step="500" className="w-24 bg-black border border-blue-500/50 p-1.5 rounded text-blue-400 font-mono text-sm text-right outline-none" defaultValue={t.parking_fee || 0} onBlur={e => onUpdateTenant?.(t.id, 'parking_fee', e.target.value)} />
+                              <input key={`park-${t.id}-${t.parking_fee}`} type="number" min="0" step="500" className="w-24 bg-black border border-blue-500/50 p-1.5 rounded text-blue-400 font-mono text-sm text-right outline-none" defaultValue={t.parking_fee || 0} onBlur={e => onUpdateTenant?.(t.id, 'parking_fee', e.target.value)} />
                             ) : (
                               <span className="font-mono text-blue-400 cursor-pointer hover:underline" onClick={() => setEditingTenantId(t.id)}>{t.parking_fee ? `¥${t.parking_fee.toLocaleString()}` : '—'}</span>
                             )}
