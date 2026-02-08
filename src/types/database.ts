@@ -79,17 +79,6 @@ export interface AlertItem {
   msg: string;
 }
 
-// ============ NOTIFICACIONES ============
-export interface Notification {
-  id: string;
-  type: 'success' | 'error' | 'warning' | 'info';
-  title: string;
-  message: string;
-  duration?: number;
-  action?: { label: string; onClick: () => void; };
-  timestamp: string;
-}
-
 // ============ REPORTES MENSUALES ============
 
 export interface PropertyReportRow {

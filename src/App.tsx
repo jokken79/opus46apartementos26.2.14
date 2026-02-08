@@ -100,7 +100,7 @@ const Modal = ({ isOpen, onClose, title, children, wide = false }: { isOpen: boo
   }, [isOpen, onClose]);
   if (!isOpen) return null;
   return (
-    <div ref={overlayRef} role="dialog" aria-modal="true" aria-labelledby="modal-title" className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-300" onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}>
+    <div ref={overlayRef} role="dialog" aria-modal="true" aria-labelledby="modal-title" className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-in fade-in duration-300" onClick={(e) => { if (e.target === overlayRef.current) onClose(); }}>
       <div className={`bg-[#15171c] border border-blue-500/20 rounded-2xl w-full ${wide ? 'max-w-5xl' : 'max-w-3xl'} shadow-2xl relative max-h-[90vh] overflow-y-auto ring-1 ring-white/10 animate-in zoom-in-95 duration-300`}>
         <div className="flex justify-between items-center p-6 border-b border-gray-800/50 sticky top-0 bg-[#15171c]/95 backdrop-blur z-20">
           <h3 id="modal-title" className="text-xl font-bold text-white flex items-center gap-3">
@@ -280,7 +280,7 @@ export default function App() {
 
   // --- CICLO ---
   const cycle = useMemo(() => {
-    const now = new Date(); const cd = db.config?.closingDay || 0;
+    const now = new Date(); const cd = db.config?.closingDay ?? 0;
     let s: Date, e: Date;
     if (cd === 0) { s = new Date(now.getFullYear(), now.getMonth(), 1); e = new Date(now.getFullYear(), now.getMonth() + 1, 0); }
     else if (now.getDate() <= cd) { s = new Date(now.getFullYear(), now.getMonth() - 1, cd + 1); e = new Date(now.getFullYear(), now.getMonth(), cd); }

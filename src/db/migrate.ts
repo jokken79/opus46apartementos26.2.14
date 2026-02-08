@@ -67,7 +67,7 @@ export async function migrateFromLocalStorage(): Promise<boolean> {
         await unsDB.config.put({
           key: 'main',
           companyName: config.companyName || 'UNS-KIKAKU',
-          closingDay: config.closingDay || 0,
+          closingDay: config.closingDay ?? 0,
           defaultCleaningFee: config.defaultCleaningFee ?? 30000,
         });
 

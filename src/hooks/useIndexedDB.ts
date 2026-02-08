@@ -49,7 +49,7 @@ async function persistToIndexedDB(data: AppDatabase): Promise<void> {
         await unsDB.config.put({
           key: 'main',
           companyName: data.config.companyName || 'UNS-KIKAKU',
-          closingDay: data.config.closingDay || 0,
+          closingDay: data.config.closingDay ?? 0,
           defaultCleaningFee: data.config.defaultCleaningFee ?? 30000,
         });
       }
@@ -140,7 +140,7 @@ export function useIndexedDB() {
                   employees: parsed.employees || [],
                   config: {
                     companyName: parsed.config?.companyName || 'UNS-KIKAKU',
-                    closingDay: parsed.config?.closingDay || 0,
+                    closingDay: parsed.config?.closingDay ?? 0,
                     defaultCleaningFee: parsed.config?.defaultCleaningFee ?? 30000,
                   },
                 };
@@ -174,7 +174,7 @@ export function useIndexedDB() {
                 employees: parsed.employees || [],
                 config: {
                   companyName: parsed.config?.companyName || 'UNS-KIKAKU',
-                  closingDay: parsed.config?.closingDay || 0,
+                  closingDay: parsed.config?.closingDay ?? 0,
                   defaultCleaningFee: parsed.config?.defaultCleaningFee ?? 30000,
                 },
               };
