@@ -9,6 +9,7 @@ import {
   Building, Users, DollarSign, Download, FileText, Printer,
   TrendingUp, TrendingDown, Calendar, Save, Trash2, BarChart3,
   ChevronDown, ChevronUp, ArrowRight, Home, AlertCircle,
+  UserPlus, LogOut, X, Search, Check,
 } from 'lucide-react';
 import { useReports } from '../../hooks/useReports';
 import { useReportExport } from '../../hooks/useReportExport';
@@ -22,16 +23,52 @@ interface ReportsViewProps {
     config: { closingDay: number; companyName: string; defaultCleaningFee?: number; };
   };
   cycle: { start: string; end: string; month: string; };
+  onUpdateTenant?: (tid: number, field: string, val: string) => void;
+  onRemoveTenant?: (tid: number) => void;
+  onAddTenant?: (tenantData: any) => void;
+  onDeleteTenant?: (tid: number) => void;
 }
 
 type ReportTab = 'property' | 'company' | 'payroll' | 'tenants' | 'history';
 
-export const ReportsView: React.FC<ReportsViewProps> = ({ db, cycle }) => {
+export const ReportsView: React.FC<ReportsViewProps> = ({ db, cycle, onUpdateTenant, onRemoveTenant, onAddTenant, onDeleteTenant }) => {
   const [activeReport, setActiveReport] = useState<ReportTab>('company');
   const [companyFilter, setCompanyFilter] = useState('');
   const [expandedSnapshot, setExpandedSnapshot] = useState<string | null>(null);
   const [compareIds, setCompareIds] = useState<[string, string] | null>(null);
   const [historyVersion, setHistoryVersion] = useState(0);
+  const [addingToPropertyId, setAddingToPropertyId] = useState<number | null>(null);
+  const [newTenantForm, setNewTenantForm] = useState({ employee_id: '', name: '', name_kana: '', company: '', rent_contribution: 0, parking_fee: 0, entry_date: new Date().toISOString().split('T')[0] });
+  const [editingTenantId, setEditingTenantId] = useState<number | null>(null);
+
+  // Búsqueda de empleado por 社員No
+  const lookupEmployee = (empId: string) => {
+    if (empId.length > 2) {
+      const found = db.employees.find(e => String(e.id) === String(empId));
+      if (found) {
+        setNewTenantForm(prev => ({ ...prev, name: found.name, name_kana: found.name_kana || '', company: found.company || '' }));
+      }
+    }
+  };
+
+  const handleAddNewTenant = (propertyId: number) => {
+    if (!newTenantForm.employee_id.trim() || !newTenantForm.name.trim()) {
+      alert('社員No y Nombre son obligatorios.');
+      return;
+    }
+    onAddTenant?.({
+      employee_id: newTenantForm.employee_id,
+      name: newTenantForm.name,
+      name_kana: newTenantForm.name_kana,
+      company: newTenantForm.company,
+      property_id: propertyId,
+      rent_contribution: parseInt(String(newTenantForm.rent_contribution)) || 0,
+      parking_fee: parseInt(String(newTenantForm.parking_fee)) || 0,
+      entry_date: newTenantForm.entry_date,
+    });
+    setAddingToPropertyId(null);
+    setNewTenantForm({ employee_id: '', name: '', name_kana: '', company: '', rent_contribution: 0, parking_fee: 0, entry_date: new Date().toISOString().split('T')[0] });
+  };
 
   const {
     propertyReport, companyReport, payrollReport,
@@ -346,7 +383,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ db, cycle }) => {
         </div>
       )}
 
-      {/* ====== REPORTE: INQUILINOS POR PROPIEDAD (家賃控除) ====== */}
+      {/* ====== REPORTE: INQUILINOS POR PROPIEDAD (家賃控除) — INTERACTIVO ====== */}
       {activeReport === 'tenants' && (
         <div className="space-y-4" id="report-table-tenants">
           {/* Totales arriba */}
@@ -373,9 +410,10 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ db, cycle }) => {
           {tenantsByProperty.map((group) => {
             const p = group.property;
             const displayName = `${p.name}${p.room_number ? `　${p.room_number}` : ''}`;
+            const isAddingHere = addingToPropertyId === p.id;
             return (
               <div key={p.id} className="rounded-2xl border border-white/10 bg-[#1a1d24]/80 backdrop-blur-md shadow-xl overflow-hidden">
-                {/* Header de propiedad (barra coloreada como Excel) */}
+                {/* Header de propiedad */}
                 <div className={`px-5 py-3 flex items-center justify-between ${
                   group.contractAlert ? 'bg-yellow-600/20 border-b border-yellow-500/30' : 'bg-blue-600/15 border-b border-blue-500/20'
                 }`}>
@@ -392,16 +430,70 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ db, cycle }) => {
                     )}
                   </div>
                   <div className="flex items-center gap-4">
-                    <div className="text-right">
+                    <div className="text-right hidden md:block">
                       <div className="text-[9px] text-gray-500 uppercase">契約家賃</div>
                       <div className="font-mono font-bold text-gray-300">¥{group.totalCost.toLocaleString()}</div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right hidden md:block">
                       <div className="text-[9px] text-gray-500 uppercase">設定家賃</div>
                       <div className="font-mono font-bold text-blue-400">¥{group.rentTarget.toLocaleString()}</div>
                     </div>
+                    {/* Botón agregar inquilino */}
+                    <button
+                      onClick={() => { setAddingToPropertyId(isAddingHere ? null : p.id); setEditingTenantId(null); setNewTenantForm({ employee_id: '', name: '', name_kana: '', company: '', rent_contribution: 0, parking_fee: 0, entry_date: new Date().toISOString().split('T')[0] }); }}
+                      className="bg-blue-600 hover:bg-blue-500 text-white p-2 rounded-lg transition flex items-center gap-1 text-xs font-bold"
+                    >
+                      {isAddingHere ? <X className="w-4 h-4" /> : <UserPlus className="w-4 h-4" />}
+                      <span className="hidden md:inline">{isAddingHere ? 'Cancelar' : '追加'}</span>
+                    </button>
                   </div>
                 </div>
+
+                {/* Formulario agregar inquilino (inline) */}
+                {isAddingHere && (
+                  <div className="p-4 bg-blue-900/10 border-b border-blue-500/20">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+                      <div>
+                        <label className="text-[10px] text-gray-500 block mb-1">社員No</label>
+                        <div className="flex gap-1">
+                          <input className="w-full bg-black border border-gray-700 p-2 rounded-lg text-white font-mono text-sm outline-none focus:border-blue-500" placeholder="220501" value={newTenantForm.employee_id} onChange={e => { setNewTenantForm(prev => ({ ...prev, employee_id: e.target.value })); lookupEmployee(e.target.value); }} />
+                          <button onClick={() => lookupEmployee(newTenantForm.employee_id)} className="bg-gray-800 hover:bg-gray-700 p-2 rounded-lg text-gray-400 transition"><Search className="w-4 h-4" /></button>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 block mb-1">名前</label>
+                        <input className="w-full bg-black border border-gray-700 p-2 rounded-lg text-white text-sm outline-none focus:border-blue-500" value={newTenantForm.name} onChange={e => setNewTenantForm(prev => ({ ...prev, name: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 block mb-1">カナ</label>
+                        <input className="w-full bg-black border border-gray-700 p-2 rounded-lg text-white text-sm outline-none focus:border-blue-500" value={newTenantForm.name_kana} onChange={e => setNewTenantForm(prev => ({ ...prev, name_kana: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 block mb-1">職場</label>
+                        <input className="w-full bg-black border border-gray-700 p-2 rounded-lg text-white text-sm outline-none focus:border-blue-500" value={newTenantForm.company} onChange={e => setNewTenantForm(prev => ({ ...prev, company: e.target.value }))} />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      <div>
+                        <label className="text-[10px] text-gray-500 block mb-1">入居日</label>
+                        <input type="date" className="w-full bg-black border border-gray-700 p-2 rounded-lg text-white text-sm outline-none focus:border-blue-500" value={newTenantForm.entry_date} onChange={e => setNewTenantForm(prev => ({ ...prev, entry_date: e.target.value }))} />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 block mb-1">家賃 (¥)</label>
+                        <input type="number" min="0" step="1000" className="w-full bg-black border border-gray-700 p-2 rounded-lg text-white font-mono text-sm outline-none focus:border-green-500" value={newTenantForm.rent_contribution} onChange={e => setNewTenantForm(prev => ({ ...prev, rent_contribution: parseInt(e.target.value) || 0 }))} />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-gray-500 block mb-1">駐車場 (¥)</label>
+                        <input type="number" min="0" step="500" className="w-full bg-black border border-gray-700 p-2 rounded-lg text-blue-300 font-mono text-sm outline-none focus:border-blue-500" value={newTenantForm.parking_fee} onChange={e => setNewTenantForm(prev => ({ ...prev, parking_fee: parseInt(e.target.value) || 0 }))} />
+                      </div>
+                      <div className="flex items-end">
+                        <button onClick={() => handleAddNewTenant(p.id)} className="w-full bg-green-600 hover:bg-green-500 text-white py-2 px-4 rounded-lg text-sm font-bold flex items-center justify-center gap-2 transition">
+                          <Check className="w-4 h-4" /> 登録
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Tabla de inquilinos */}
                 <table className="w-full text-sm">
@@ -412,25 +504,50 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ db, cycle }) => {
                       <th className="text-left px-3 py-2 text-[10px] text-gray-500 uppercase font-bold">社員番号</th>
                       <th className="text-left px-3 py-2 text-[10px] text-gray-500 uppercase font-bold">職場</th>
                       <th className="text-left px-3 py-2 text-[10px] text-gray-500 uppercase font-bold">名前</th>
-                      <th className="text-left px-3 py-2 text-[10px] text-gray-500 uppercase font-bold">カナ</th>
                       <th className="text-right px-3 py-2 text-[10px] text-gray-500 uppercase font-bold">家賃</th>
-                      <th className="text-right px-4 py-2 text-[10px] text-gray-500 uppercase font-bold">駐車場</th>
+                      <th className="text-right px-3 py-2 text-[10px] text-gray-500 uppercase font-bold">駐車場</th>
+                      <th className="text-center px-2 py-2 text-[10px] text-gray-500 uppercase font-bold">操作</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {group.activeTenants.map((t: any) => (
-                      <tr key={t.id} className="border-b border-white/5 hover:bg-white/5 transition">
-                        <td className="px-4 py-2.5 font-mono text-gray-300 text-xs">{t.entry_date || '—'}</td>
-                        <td className="px-3 py-2.5 font-mono text-gray-500 text-xs">{t.exit_date || ''}</td>
-                        <td className="px-3 py-2.5 font-mono text-gray-300">{t.employee_id}</td>
-                        <td className="px-3 py-2.5 text-gray-400">{t.company || ''}</td>
-                        <td className="px-3 py-2.5 font-bold text-white">{t.name}</td>
-                        <td className="px-3 py-2.5 text-gray-400">{t.name_kana}</td>
-                        <td className="px-3 py-2.5 text-right font-mono text-green-400">¥{(t.rent_contribution || 0).toLocaleString()}</td>
-                        <td className="px-4 py-2.5 text-right font-mono text-blue-400">{t.parking_fee ? `¥${t.parking_fee.toLocaleString()}` : ''}</td>
-                      </tr>
-                    ))}
-                    {/* Inquilinos inactivos (históricos) */}
+                    {group.activeTenants.map((t: any) => {
+                      const isEditing = editingTenantId === t.id;
+                      return (
+                        <tr key={t.id} className={`border-b border-white/5 transition ${isEditing ? 'bg-blue-900/10' : 'hover:bg-white/5'}`}>
+                          <td className="px-4 py-2.5 font-mono text-gray-300 text-xs">{t.entry_date || '—'}</td>
+                          <td className="px-3 py-2.5 font-mono text-gray-500 text-xs">{t.exit_date || ''}</td>
+                          <td className="px-3 py-2.5 font-mono text-gray-300">{t.employee_id}</td>
+                          <td className="px-3 py-2.5 text-gray-400">{t.company || ''}</td>
+                          <td className="px-3 py-2.5 font-bold text-white">{t.name} <span className="text-gray-500 font-normal text-xs">{t.name_kana}</span></td>
+                          {/* Edición inline de renta */}
+                          <td className="px-3 py-1 text-right">
+                            {isEditing ? (
+                              <input type="number" min="0" step="1000" className="w-24 bg-black border border-green-500/50 p-1.5 rounded text-green-400 font-mono text-sm text-right outline-none" defaultValue={t.rent_contribution || 0} onBlur={e => onUpdateTenant?.(t.id, 'rent_contribution', e.target.value)} />
+                            ) : (
+                              <span className="font-mono text-green-400 cursor-pointer hover:underline" onClick={() => setEditingTenantId(t.id)}>¥{(t.rent_contribution || 0).toLocaleString()}</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-1 text-right">
+                            {isEditing ? (
+                              <input type="number" min="0" step="500" className="w-24 bg-black border border-blue-500/50 p-1.5 rounded text-blue-400 font-mono text-sm text-right outline-none" defaultValue={t.parking_fee || 0} onBlur={e => onUpdateTenant?.(t.id, 'parking_fee', e.target.value)} />
+                            ) : (
+                              <span className="font-mono text-blue-400 cursor-pointer hover:underline" onClick={() => setEditingTenantId(t.id)}>{t.parking_fee ? `¥${t.parking_fee.toLocaleString()}` : '—'}</span>
+                            )}
+                          </td>
+                          <td className="px-2 py-1 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              {isEditing ? (
+                                <button onClick={() => setEditingTenantId(null)} className="text-green-400 hover:text-green-300 p-1 transition" title="Listo"><Check className="w-4 h-4" /></button>
+                              ) : (
+                                <button onClick={() => { setEditingTenantId(t.id); setAddingToPropertyId(null); }} className="text-gray-600 hover:text-blue-400 p-1 transition" title="Editar renta"><Search className="w-3.5 h-3.5" /></button>
+                              )}
+                              <button onClick={() => onRemoveTenant?.(t.id)} className="text-gray-600 hover:text-yellow-400 p-1 transition" title="Dar de baja (退去)"><LogOut className="w-3.5 h-3.5" /></button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {/* Inquilinos inactivos */}
                     {group.inactiveTenants.map((t: any) => (
                       <tr key={t.id} className="border-b border-white/5 opacity-40">
                         <td className="px-4 py-2 font-mono text-gray-500 text-xs">{t.entry_date || '—'}</td>
@@ -438,11 +555,16 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ db, cycle }) => {
                         <td className="px-3 py-2 font-mono text-gray-500">{t.employee_id}</td>
                         <td className="px-3 py-2 text-gray-600">{t.company || ''}</td>
                         <td className="px-3 py-2 text-gray-500 line-through">{t.name}</td>
-                        <td className="px-3 py-2 text-gray-600">{t.name_kana}</td>
                         <td className="px-3 py-2 text-right font-mono text-gray-600">¥{(t.rent_contribution || 0).toLocaleString()}</td>
-                        <td className="px-4 py-2 text-right font-mono text-gray-600">{t.parking_fee ? `¥${t.parking_fee.toLocaleString()}` : ''}</td>
+                        <td className="px-3 py-2 text-right font-mono text-gray-600">{t.parking_fee ? `¥${t.parking_fee.toLocaleString()}` : ''}</td>
+                        <td className="px-2 py-2 text-center">
+                          <button onClick={() => onDeleteTenant?.(t.id)} className="text-gray-700 hover:text-red-400 p-1 transition" title="Eliminar registro"><Trash2 className="w-3.5 h-3.5" /></button>
+                        </td>
                       </tr>
                     ))}
+                    {group.activeTenants.length === 0 && group.inactiveTenants.length === 0 && (
+                      <tr><td colSpan={8} className="px-4 py-6 text-center text-gray-600 text-sm">空室 — Sin inquilinos</td></tr>
+                    )}
                   </tbody>
                 </table>
               </div>
