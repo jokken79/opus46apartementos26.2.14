@@ -32,10 +32,10 @@ interface Property {
 interface Tenant {
   id: number; employee_id: string; name: string; name_kana: string;
   property_id: number; rent_contribution: number; parking_fee: number;
-  entry_date?: string; exit_date?: string; status: 'active' | 'inactive';
+  entry_date?: string; exit_date?: string; cleaning_fee?: number; status: 'active' | 'inactive';
 }
 interface Employee { id: string; name: string; name_kana: string; company: string; full_data: any; }
-interface AppConfig { companyName: string; closingDay: number; }
+interface AppConfig { companyName: string; closingDay: number; defaultCleaningFee: number; }
 interface AppDatabase { properties: Property[]; tenants: Tenant[]; employees: Employee[]; config: AppConfig; }
 interface AlertItem { type: 'warning' | 'danger'; msg: string; }
 
@@ -71,7 +71,7 @@ const COMPANY_INFO = {
 
 const INITIAL_DB: AppDatabase = {
   properties: [], tenants: [], employees: [],
-  config: { companyName: COMPANY_INFO.name_en, closingDay: 0 }
+  config: { companyName: COMPANY_INFO.name_en, closingDay: 0, defaultCleaningFee: 30000 }
 };
 
 // --- UI COMPONENTS ---
@@ -165,6 +165,16 @@ const SettingsView = ({ db, setDb, onDownloadBackup, onRestoreBackup, onReset }:
           ))}
         </div>
         <div className="flex justify-end mt-4"><button onClick={handleSaveConfig} className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg font-bold shadow-lg shadow-blue-500/20 flex items-center gap-2 text-sm"><Save className="w-4 h-4" /> Guardar</button></div>
+      </GlassCard>
+      <GlassCard className="p-6">
+        <h3 className="text-lg font-bold text-red-400 mb-4 flex items-center gap-2"><Trash2 className="w-5 h-5"/> クリーニング費 (Limpieza al salir)</h3>
+        <p className="text-xs text-gray-500 mb-3">Monto que se cobra al inquilino al dar de baja. Se registra automáticamente en el historial.</p>
+        <div className="flex items-center gap-3">
+          <span className="text-gray-400 text-lg font-bold">¥</span>
+          <input type="number" step="1000" className="w-48 bg-black/50 border border-gray-700 p-3 rounded-xl text-white font-mono text-lg focus:border-red-500 outline-none transition" value={localConfig.defaultCleaningFee ?? 30000} onChange={e => setLocalConfig({...localConfig, defaultCleaningFee: parseInt(e.target.value) || 0})} />
+          <span className="text-gray-500 text-xs">por persona</span>
+        </div>
+        <div className="flex justify-end mt-4"><button onClick={handleSaveConfig} className="bg-red-600 hover:bg-red-500 text-white px-6 py-2 rounded-lg font-bold shadow-lg shadow-red-500/20 flex items-center gap-2 text-sm"><Save className="w-4 h-4" /> Guardar</button></div>
       </GlassCard>
       <h3 className="text-xl font-bold text-white mb-4 flex items-center gap-2"><Database className="w-6 h-6 text-blue-500"/> Gestión de Datos</h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -366,9 +376,12 @@ export default function App() {
   };
 
   const removeTenant = (tid: number) => {
-    if (!window.confirm('¿Dar de baja a este inquilino?')) return;
+    const tenant = db.tenants.find(t => t.id === tid);
+    if (!tenant) return;
+    const fee = db.config.defaultCleaningFee || 30000;
+    if (!window.confirm(`¿Dar de baja a ${tenant.name}?\n\nSe aplicará クリーニング費 (limpieza): ¥${fee.toLocaleString()}`)) return;
     const exitDate = new Date().toISOString().split('T')[0];
-    setDb(prev => ({ ...prev, tenants: prev.tenants.map(t => t.id === tid ? { ...t, status: 'inactive' as const, exit_date: exitDate } : t) }));
+    setDb(prev => ({ ...prev, tenants: prev.tenants.map(t => t.id === tid ? { ...t, status: 'inactive' as const, exit_date: exitDate, cleaning_fee: fee } : t) }));
   };
 
   // --- IMPORT ---
@@ -678,24 +691,32 @@ export default function App() {
                       <History className="w-4 h-4 text-orange-400" />
                       <span className="text-xs text-orange-400 font-bold uppercase tracking-wider">Historial de Inquilinos ({inactiveTenants.length})</span>
                     </div>
+                    <div className="grid grid-cols-12 text-[9px] text-gray-600 uppercase font-bold px-4 pt-3 pb-1">
+                      <div className="col-span-3">Nombre</div>
+                      <div className="col-span-2 text-center">入居</div>
+                      <div className="col-span-2 text-center">退去</div>
+                      <div className="col-span-2 text-right">最終家賃</div>
+                      <div className="col-span-3 text-right">クリーニング費</div>
+                    </div>
                     <div className="p-2 space-y-1">
                       {inactiveTenants.map(t => (
                         <div key={t.id} className="grid grid-cols-12 items-center p-3 rounded-xl bg-black/20 border border-white/5 opacity-70">
-                          <div className="col-span-4">
+                          <div className="col-span-3">
                             <div className="text-gray-400 text-sm font-bold truncate">{t.name}</div>
                             <div className="text-[10px] text-gray-600 font-mono">{t.employee_id}</div>
                           </div>
-                          <div className="col-span-3 text-center">
+                          <div className="col-span-2 text-center">
                             <div className="text-[10px] text-gray-500 font-mono">{t.entry_date || '—'}</div>
-                            <div className="text-[9px] text-gray-600">入居</div>
                           </div>
-                          <div className="col-span-3 text-center">
+                          <div className="col-span-2 text-center">
                             <div className="text-[10px] text-orange-400/70 font-mono">{t.exit_date || '—'}</div>
-                            <div className="text-[9px] text-gray-600">退去</div>
                           </div>
                           <div className="col-span-2 text-right">
                             <div className="text-[10px] text-gray-500 font-mono">¥{(t.rent_contribution || 0).toLocaleString()}</div>
-                            <div className="text-[9px] text-gray-600">最終家賃</div>
+                          </div>
+                          <div className="col-span-3 text-right">
+                            <div className="text-[10px] text-red-400 font-mono font-bold">¥{(t.cleaning_fee || 0).toLocaleString()}</div>
+                            <div className="text-[9px] text-gray-600">limpieza</div>
                           </div>
                         </div>
                       ))}
