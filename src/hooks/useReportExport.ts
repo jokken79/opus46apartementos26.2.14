@@ -201,6 +201,7 @@ export function useReportExport() {
       </html>
     `);
     printWindow.document.close();
+    printWindow.onafterprint = () => { printWindow.close(); };
     setTimeout(() => { printWindow.print(); }, 500);
   }, []);
 

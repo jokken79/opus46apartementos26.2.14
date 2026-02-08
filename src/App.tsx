@@ -11,6 +11,14 @@ import { useIndexedDB } from './hooks/useIndexedDB';
 import type { Property, Tenant, Employee, AppConfig, AppDatabase, AlertItem } from './types/database';
 import { validateBackup } from './utils/validators';
 
+// --- ID Generator (monotónico, sin colisiones) ---
+let _lastId = 0;
+const generateId = (): number => {
+  const now = Date.now();
+  _lastId = now > _lastId ? now : _lastId + 1;
+  return _lastId;
+};
+
 // --- SheetJS ---
 let sheetJSReady = false;
 const useLoadSheetJS = () => {
@@ -368,11 +376,11 @@ export default function App() {
   const handleSaveProperty = (e: React.FormEvent) => {
     e.preventDefault();
     const addr = propertyForm.postal_code ? `〒${propertyForm.postal_code} ${propertyForm.address_auto} ${propertyForm.address_detail}` : `${propertyForm.address_auto} ${propertyForm.address_detail}`;
-    const cp = { ...propertyForm, address: addr.trim(), capacity: parseInt(propertyForm.capacity) || 0, rent_cost: parseInt(propertyForm.rent_cost) || 0, rent_price_uns: parseInt(propertyForm.rent_price_uns) || 0, parking_cost: parseInt(propertyForm.parking_cost) || 0, kanri_hi: parseInt(propertyForm.kanri_hi) || 0 };
+    const cp = { ...propertyForm, address: addr.trim() };
     setDb(prev => {
       const newProps = [...prev.properties];
       if (propertyForm.id) { const i = newProps.findIndex(p => p.id === propertyForm.id); if (i >= 0) newProps[i] = cp; }
-      else newProps.push({ ...cp, id: Date.now() });
+      else newProps.push({ ...cp, id: generateId() });
       return { ...prev, properties: newProps };
     });
     setIsPropertyModalOpen(false);
@@ -405,7 +413,7 @@ export default function App() {
     if (!tenantForm.employee_id.trim() || !tenantForm.name.trim()) { alert('社員No y Nombre son obligatorios.'); return; }
     if (!tenantForm.property_id) { alert('Error: propiedad no seleccionada.'); return; }
     if (db.tenants.find(t => t.employee_id === tenantForm.employee_id && t.status === 'active')) { alert('Este 社員No ya está asignado a otro apartamento.'); return; }
-    const newT: Tenant = { id: Date.now(), ...tenantForm, property_id: parseInt(tenantForm.property_id), rent_contribution: parseInt(tenantForm.rent_contribution) || 0, parking_fee: parseInt(tenantForm.parking_fee) || 0, status: 'active' };
+    const newT: Tenant = { id: generateId(), ...tenantForm, property_id: Number(tenantForm.property_id), status: 'active' };
     setDb(prev => ({ ...prev, tenants: [...prev.tenants, newT] }));
     setIsAddTenantModalOpen(false);
     setTenantForm({ employee_id: '', name: '', name_kana: '', company: '', property_id: '', rent_contribution: 0, parking_fee: 0, entry_date: new Date().toISOString().split('T')[0] });
@@ -452,8 +460,8 @@ export default function App() {
       tab = 'employees';
     } else if (detectedType === 'rent_management') {
       const { properties, tenants } = previewData;
-      properties.forEach((r: any, idx: number) => { const n = r['ｱﾊﾟｰﾄ'] || r['物件名']; if (!n) return; const ex = newDb.properties.find(p => p.name === n); const pid = ex ? ex.id : Date.now() + idx; const o: Property = { id: pid, name: String(n).trim(), address: String(r['住所'] || '').trim(), capacity: parseInt(r['入居人数'] || 2) || 2, rent_cost: parseInt(r['家賃'] || 0), rent_price_uns: parseInt(r['USN家賃'] || 0), parking_cost: parseInt(r['駐車場代'] || 0) }; if (ex) Object.assign(ex, o); else newDb.properties.push(o); });
-      tenants.forEach((r: any, idx: number) => { const apt = r['ｱﾊﾟｰﾄ']; const kana = r['カナ']; if (!apt || !kana) return; const pr = newDb.properties.find(p => p.name === apt); if (!pr) return; if (!newDb.tenants.find(t => t.name_kana === kana && t.property_id === pr.id)) newDb.tenants.push({ id: Date.now() + idx, employee_id: `IMP-${idx}`, name: kana, name_kana: kana, property_id: pr.id, rent_contribution: parseInt(r['家賃'] || 0), parking_fee: parseInt(r['駐車場'] || 0), entry_date: r['入居'] || new Date().toISOString().split('T')[0], status: 'active' }); });
+      properties.forEach((r: any) => { const n = r['ｱﾊﾟｰﾄ'] || r['物件名']; if (!n) return; const ex = newDb.properties.find(p => p.name === n); const pid = ex ? ex.id : generateId(); const o: Property = { id: pid, name: String(n).trim(), address: String(r['住所'] || '').trim(), capacity: parseInt(r['入居人数'] || 2) || 2, rent_cost: parseInt(r['家賃'] || 0), rent_price_uns: parseInt(r['USN家賃'] || 0), parking_cost: parseInt(r['駐車場代'] || 0) }; if (ex) Object.assign(ex, o); else newDb.properties.push(o); });
+      tenants.forEach((r: any, idx: number) => { const apt = r['ｱﾊﾟｰﾄ']; const kana = r['カナ']; if (!apt || !kana) return; const pr = newDb.properties.find(p => p.name === apt); if (!pr) return; if (!newDb.tenants.find(t => t.name_kana === kana && t.property_id === pr.id)) newDb.tenants.push({ id: generateId(), employee_id: `IMP-${idx}`, name: kana, name_kana: kana, property_id: pr.id, rent_contribution: parseInt(r['家賃'] || 0), parking_fee: parseInt(r['駐車場'] || 0), entry_date: r['入居'] || new Date().toISOString().split('T')[0], status: 'active' }); });
       tab = 'properties';
     }
     setDb(newDb); setPreviewData([]); setDetectedType(null); setImportStatus({ type: '', msg: '' }); setActiveTab(tab);
@@ -674,7 +682,7 @@ export default function App() {
           )}
 
           {/* ====== REPORTES ====== */}
-          {activeTab === 'reports' && <ReportsView db={db} cycle={cycle} onUpdateTenant={(tid, field, val) => { const v = parseInt(val) || 0; setDb(prev => ({ ...prev, tenants: prev.tenants.map(t => t.id === tid ? { ...t, [field]: v } : t) })); }} onRemoveTenant={(tid) => { const tenant = db.tenants.find(t => t.id === tid); if (!tenant) return; const fee = db.config.defaultCleaningFee || 30000; if (!window.confirm(`¿Dar de baja a ${tenant.name}?\n\nクリーニング費: ¥${fee.toLocaleString()}`)) return; setDb(prev => ({ ...prev, tenants: prev.tenants.map(t => t.id === tid ? { ...t, status: 'inactive' as const, exit_date: new Date().toISOString().split('T')[0], cleaning_fee: fee } : t) })); }} onAddTenant={(tenantData) => { if (db.tenants.find(t => t.employee_id === tenantData.employee_id && t.status === 'active')) { alert('Este 社員No ya está asignado.'); return; } const newT: Tenant = { ...tenantData, id: Date.now(), status: 'active' }; setDb(prev => ({ ...prev, tenants: [...prev.tenants, newT] })); }} onDeleteTenant={(tid) => { if (!window.confirm('¿Eliminar registro permanentemente?')) return; setDb(prev => ({ ...prev, tenants: prev.tenants.filter(t => t.id !== tid) })); }} />}
+          {activeTab === 'reports' && <ReportsView db={db} cycle={cycle} onUpdateTenant={(tid, field, val) => { const v = parseInt(val) || 0; setDb(prev => ({ ...prev, tenants: prev.tenants.map(t => t.id === tid ? { ...t, [field]: v } : t) })); }} onRemoveTenant={(tid) => { const tenant = db.tenants.find(t => t.id === tid); if (!tenant) return; const fee = db.config.defaultCleaningFee || 30000; if (!window.confirm(`¿Dar de baja a ${tenant.name}?\n\nクリーニング費: ¥${fee.toLocaleString()}`)) return; setDb(prev => ({ ...prev, tenants: prev.tenants.map(t => t.id === tid ? { ...t, status: 'inactive' as const, exit_date: new Date().toISOString().split('T')[0], cleaning_fee: fee } : t) })); }} onAddTenant={(tenantData) => { if (db.tenants.find(t => t.employee_id === tenantData.employee_id && t.status === 'active')) { alert('Este 社員No ya está asignado.'); return; } const newT: Tenant = { ...tenantData, id: generateId(), status: 'active' }; setDb(prev => ({ ...prev, tenants: [...prev.tenants, newT] })); }} onDeleteTenant={(tid) => { if (!window.confirm('¿Eliminar registro permanentemente?')) return; setDb(prev => ({ ...prev, tenants: prev.tenants.filter(t => t.id !== tid) })); }} />}
 
           {/* ====== IMPORT ====== */}
           {activeTab === 'import' && <ImportViewComponent isDragging={isDragging} importStatus={importStatus} previewSummary={previewSummary} onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }} onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }} onDrop={(e) => { e.preventDefault(); setIsDragging(false); if (e.dataTransfer.files.length) processExcelFile(e.dataTransfer.files[0]); }} onFileChange={(e) => e.target.files?.length && processExcelFile(e.target.files[0])} onSave={saveToDatabase} />}
@@ -688,7 +696,7 @@ export default function App() {
       <nav className="md:hidden fixed bottom-0 left-0 w-full bg-[#0d0f12]/95 backdrop-blur-lg border-t border-white/10 flex justify-around items-center h-20 z-50 px-2 pb-2 safe-area-bottom">
         <NavButtonMobile icon={LayoutDashboard} active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} label="HQ" />
         <NavButtonMobile icon={Building} active={activeTab === 'properties'} onClick={() => setActiveTab('properties')} label="Prop." />
-        <div className="relative -top-5"><button onClick={() => setActiveTab('import')} className="bg-blue-600 text-white p-4 rounded-full shadow-lg shadow-blue-500/30 border-4 border-[#0d0f12]"><UploadCloud className="w-6 h-6" /></button></div>
+        <NavButtonMobile icon={Users} active={activeTab === 'employees'} onClick={() => setActiveTab('employees')} label="社員" />
         <NavButtonMobile icon={FileText} active={activeTab === 'reports'} onClick={() => setActiveTab('reports')} label="報告" />
         <NavButtonMobile icon={Settings} active={activeTab === 'settings'} onClick={() => setActiveTab('settings')} label="Config" />
       </nav>
@@ -834,10 +842,10 @@ export default function App() {
             <div className="col-span-2 bg-gray-800/30 p-5 rounded-2xl border border-white/5">
               <h4 className="text-green-400 text-xs font-bold mb-4 uppercase flex items-center gap-2"><DollarSign className="w-3 h-3" /> Estructura de Costos (不動産屋に払う)</h4>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div><label className="text-[10px] text-gray-500 block mb-1">家賃 (Renta)</label><input type="number" min="0" step="1000" className="w-full bg-black border border-gray-700 p-2.5 rounded-lg text-white font-mono focus:border-green-500 outline-none" value={propertyForm.rent_cost} onChange={e => setPropertyForm({ ...propertyForm, rent_cost: e.target.value })} /></div>
-                <div><label className="text-[10px] text-gray-500 block mb-1">管理費</label><input type="number" min="0" step="500" className="w-full bg-black border border-gray-700 p-2.5 rounded-lg text-white font-mono focus:border-green-500 outline-none" value={propertyForm.kanri_hi} onChange={e => setPropertyForm({ ...propertyForm, kanri_hi: e.target.value })} /></div>
-                <div><label className="text-[10px] text-blue-400 block mb-1">駐車場代</label><input type="number" min="0" step="500" className="w-full bg-black border border-blue-900/30 p-2.5 rounded-lg text-blue-200 font-mono focus:border-blue-500 outline-none" value={propertyForm.parking_cost} onChange={e => setPropertyForm({ ...propertyForm, parking_cost: e.target.value })} /></div>
-                <div><label className="text-[10px] text-yellow-500 block mb-1 font-bold">Precio UNS</label><input type="number" min="0" step="1000" className="w-full bg-black border border-yellow-900/30 p-2.5 rounded-lg text-yellow-400 font-mono font-bold focus:border-yellow-500 outline-none" value={propertyForm.rent_price_uns} onChange={e => setPropertyForm({ ...propertyForm, rent_price_uns: e.target.value })} /></div>
+                <div><label className="text-[10px] text-gray-500 block mb-1">家賃 (Renta)</label><input type="number" min="0" step="1000" className="w-full bg-black border border-gray-700 p-2.5 rounded-lg text-white font-mono focus:border-green-500 outline-none" value={propertyForm.rent_cost} onChange={e => setPropertyForm({ ...propertyForm, rent_cost: Number(e.target.value) || 0 })} /></div>
+                <div><label className="text-[10px] text-gray-500 block mb-1">管理費</label><input type="number" min="0" step="500" className="w-full bg-black border border-gray-700 p-2.5 rounded-lg text-white font-mono focus:border-green-500 outline-none" value={propertyForm.kanri_hi} onChange={e => setPropertyForm({ ...propertyForm, kanri_hi: Number(e.target.value) || 0 })} /></div>
+                <div><label className="text-[10px] text-blue-400 block mb-1">駐車場代</label><input type="number" min="0" step="500" className="w-full bg-black border border-blue-900/30 p-2.5 rounded-lg text-blue-200 font-mono focus:border-blue-500 outline-none" value={propertyForm.parking_cost} onChange={e => setPropertyForm({ ...propertyForm, parking_cost: Number(e.target.value) || 0 })} /></div>
+                <div><label className="text-[10px] text-yellow-500 block mb-1 font-bold">Precio UNS</label><input type="number" min="0" step="1000" className="w-full bg-black border border-yellow-900/30 p-2.5 rounded-lg text-yellow-400 font-mono font-bold focus:border-yellow-500 outline-none" value={propertyForm.rent_price_uns} onChange={e => setPropertyForm({ ...propertyForm, rent_price_uns: Number(e.target.value) || 0 })} /></div>
               </div>
             </div>
 
@@ -851,7 +859,7 @@ export default function App() {
             </div>
 
             <div><label className="text-xs text-gray-400 block mb-1 ml-1">Tipo</label><input className="w-full bg-black/50 border border-gray-700 p-3 rounded-xl text-white outline-none" value={propertyForm.type} onChange={e => setPropertyForm({ ...propertyForm, type: e.target.value })} /></div>
-            <div><label className="text-xs text-gray-400 block mb-1 ml-1">Capacidad</label><input type="number" min="1" max="20" className="w-full bg-black/50 border border-gray-700 p-3 rounded-xl text-white outline-none" value={propertyForm.capacity} onChange={e => setPropertyForm({ ...propertyForm, capacity: e.target.value })} /></div>
+            <div><label className="text-xs text-gray-400 block mb-1 ml-1">Capacidad</label><input type="number" min="1" max="20" className="w-full bg-black/50 border border-gray-700 p-3 rounded-xl text-white outline-none" value={propertyForm.capacity} onChange={e => setPropertyForm({ ...propertyForm, capacity: Number(e.target.value) || 1 })} /></div>
           </div>
           <div className="border-t border-gray-800 pt-6 grid grid-cols-2 gap-5">
             <div><label className="text-xs text-gray-400 block mb-1">Admin</label><input className="w-full bg-black/50 border border-gray-700 p-2.5 rounded-lg text-white" value={propertyForm.manager_name} onChange={e => setPropertyForm({ ...propertyForm, manager_name: e.target.value })} /></div>
@@ -903,8 +911,8 @@ export default function App() {
           <div className="bg-gray-800/50 p-6 rounded-2xl border border-white/5">
             <label className="text-xs text-blue-500 font-bold block mb-4 uppercase tracking-wide">Paso 3: Precio Mensual</label>
             <div className="grid grid-cols-2 gap-6">
-              <div><label className="text-xs text-gray-400 block mb-1">Renta (¥/月)</label><input type="number" min="0" step="1000" className="w-full bg-black border border-gray-700 p-3 rounded-xl text-white font-mono text-lg focus:border-blue-500 outline-none" value={tenantForm.rent_contribution} onChange={e => setTenantForm({ ...tenantForm, rent_contribution: e.target.value })} /></div>
-              <div><label className="text-xs text-blue-400 block mb-1">Parking (¥/月)</label><input type="number" min="0" step="500" className="w-full bg-black border border-blue-900/50 p-3 rounded-xl text-blue-200 font-mono text-lg focus:border-blue-500 outline-none" value={tenantForm.parking_fee} onChange={e => setTenantForm({ ...tenantForm, parking_fee: e.target.value })} /></div>
+              <div><label className="text-xs text-gray-400 block mb-1">Renta (¥/月)</label><input type="number" min="0" step="1000" className="w-full bg-black border border-gray-700 p-3 rounded-xl text-white font-mono text-lg focus:border-blue-500 outline-none" value={tenantForm.rent_contribution} onChange={e => setTenantForm({ ...tenantForm, rent_contribution: Number(e.target.value) || 0 })} /></div>
+              <div><label className="text-xs text-blue-400 block mb-1">Parking (¥/月)</label><input type="number" min="0" step="500" className="w-full bg-black border border-blue-900/50 p-3 rounded-xl text-blue-200 font-mono text-lg focus:border-blue-500 outline-none" value={tenantForm.parking_fee} onChange={e => setTenantForm({ ...tenantForm, parking_fee: Number(e.target.value) || 0 })} /></div>
             </div>
             {tenantForm.entry_date && parseInt(tenantForm.rent_contribution) > 0 && (() => {
               const pr = calculateProRata(parseInt(tenantForm.rent_contribution), tenantForm.entry_date);
