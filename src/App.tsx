@@ -9,7 +9,7 @@ import {
 import { ReportsView } from './components/reports/ReportsView';
 import { useIndexedDB } from './hooks/useIndexedDB';
 import type { Property, Tenant, Employee, AppConfig, AppDatabase, AlertItem } from './types/database';
-import { validateBackup } from './utils/validators';
+import { validateBackup, validateProperty, validateTenant } from './utils/validators';
 
 // --- ID Generator (monotónico, sin colisiones) ---
 let _lastId = 0;
@@ -377,6 +377,12 @@ export default function App() {
     e.preventDefault();
     const addr = propertyForm.postal_code ? `〒${propertyForm.postal_code} ${propertyForm.address_auto} ${propertyForm.address_detail}` : `${propertyForm.address_auto} ${propertyForm.address_detail}`;
     const cp = { ...propertyForm, address: addr.trim() };
+    // Validar con Zod
+    const validation = validateProperty(cp);
+    if (!validation.success) {
+      alert('Error de validación:\n' + validation.errors.map(e => `• ${e.field}: ${e.message}`).join('\n'));
+      return;
+    }
     setDb(prev => {
       const newProps = [...prev.properties];
       if (propertyForm.id) { const i = newProps.findIndex(p => p.id === propertyForm.id); if (i >= 0) newProps[i] = cp; }
@@ -437,11 +443,17 @@ export default function App() {
 
   const handleAddTenant = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!tenantForm.employee_id.trim() || !tenantForm.name.trim()) { alert('社員No y Nombre son obligatorios.'); return; }
     if (!tenantForm.property_id) { alert('Error: propiedad no seleccionada.'); return; }
-    if (db.tenants.find(t => t.employee_id === tenantForm.employee_id && t.status === 'active')) { alert('Este 社員No ya está asignado a otro apartamento.'); return; }
     const propId = Number(tenantForm.property_id);
-    const newT: Tenant = { id: generateId(), ...tenantForm, property_id: propId, status: 'active' };
+    const tenantData = { ...tenantForm, property_id: propId, status: 'active' as const };
+    // Validar con Zod
+    const validation = validateTenant(tenantData);
+    if (!validation.success) {
+      alert('Error de validación:\n' + validation.errors.map(e => `• ${e.field}: ${e.message}`).join('\n'));
+      return;
+    }
+    if (db.tenants.find(t => t.employee_id === tenantForm.employee_id && t.status === 'active')) { alert('Este 社員No ya está asignado a otro apartamento.'); return; }
+    const newT: Tenant = { id: generateId(), ...tenantData };
     setDb(prev => {
       const updated = { ...prev, tenants: [...prev.tenants, newT] };
       return autoSplitRent(updated, propId);
