@@ -15,8 +15,7 @@ import {
   MonthlySnapshot,
   ReportHistory,
 } from '../types/database';
-
-const REPORTS_STORAGE_KEY = 'uns_reports_v1';
+import { unsDB } from '../db/dexie';
 
 interface ReportDatabase {
   properties: Array<{
@@ -236,23 +235,21 @@ export function useReports(db: ReportDatabase) {
   }, [payrollReport]);
 
   // ========================================
-  // HISTÓRICO: Guardar/leer snapshots
+  // HISTÓRICO: Guardar/leer snapshots (IndexedDB via Dexie)
   // ========================================
-  const loadHistory = useCallback((): ReportHistory => {
+  const loadHistory = useCallback(async (): Promise<ReportHistory> => {
     try {
-      const raw = localStorage.getItem(REPORTS_STORAGE_KEY);
-      if (!raw) return { snapshots: [], version: '1.0' };
-      return JSON.parse(raw);
+      const snapshots = await unsDB.snapshots.orderBy('cycle_month').reverse().toArray();
+      return { snapshots: snapshots as unknown as MonthlySnapshot[], version: '1.0' };
     } catch {
       return { snapshots: [], version: '1.0' };
     }
   }, []);
 
-  const saveSnapshot = useCallback((cycleMonth: string, cycleStart: string, cycleEnd: string) => {
-    const history = loadHistory();
-
+  const saveSnapshot = useCallback(async (cycleMonth: string, cycleStart: string, cycleEnd: string) => {
     // No duplicar si ya existe cierre del mismo mes
-    if (history.snapshots.some(s => s.cycle_month === cycleMonth)) {
+    const existing = await unsDB.snapshots.where('cycle_month').equals(cycleMonth).first();
+    if (existing) {
       return { success: false, error: `Ya existe cierre para ${cycleMonth}` };
     }
 
@@ -276,22 +273,21 @@ export function useReports(db: ReportDatabase) {
       payroll_detail: [...payrollReport],
     };
 
-    history.snapshots.push(snapshot);
-    history.snapshots.sort((a, b) => b.cycle_month.localeCompare(a.cycle_month));
-
     try {
-      localStorage.setItem(REPORTS_STORAGE_KEY, JSON.stringify(history));
+      await unsDB.snapshots.put(snapshot as any);
       return { success: true, snapshot };
     } catch {
-      return { success: false, error: 'Error al guardar en localStorage' };
+      return { success: false, error: 'Error al guardar en IndexedDB' };
     }
-  }, [loadHistory, propertyTotals, payrollTotals, companyReport, propertyReport, payrollReport]);
+  }, [propertyTotals, payrollTotals, companyReport, propertyReport, payrollReport]);
 
-  const deleteSnapshot = useCallback((snapshotId: string) => {
-    const history = loadHistory();
-    history.snapshots = history.snapshots.filter(s => s.id !== snapshotId);
-    localStorage.setItem(REPORTS_STORAGE_KEY, JSON.stringify(history));
-  }, [loadHistory]);
+  const deleteSnapshot = useCallback(async (snapshotId: string) => {
+    try {
+      await unsDB.snapshots.delete(snapshotId);
+    } catch (error) {
+      console.error('[useReports] Error eliminando snapshot:', error);
+    }
+  }, []);
 
   return {
     // Reportes actuales

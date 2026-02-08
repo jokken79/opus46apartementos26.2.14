@@ -7,6 +7,7 @@ import {
   CalendarDays, Percent, LogOut, Table2, FileText
 } from 'lucide-react';
 import { ReportsView } from './components/reports/ReportsView';
+import { useIndexedDB } from './hooks/useIndexedDB';
 
 // --- SheetJS ---
 const useLoadSheetJS = () => {
@@ -251,24 +252,8 @@ export default function App() {
   useLoadSheetJS();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [searchTerm, setSearchTerm] = useState('');
-  const [db, setDb] = useState<AppDatabase>(() => {
-    try {
-      const s = localStorage.getItem('uns_db_v6_0');
-      if (!s) return INITIAL_DB;
-      const parsed = JSON.parse(s);
-      if (!parsed.properties || !Array.isArray(parsed.properties) || !parsed.tenants || !Array.isArray(parsed.tenants) || !parsed.employees || !Array.isArray(parsed.employees)) {
-        console.warn('Corrupt localStorage data, resetting to defaults');
-        return INITIAL_DB;
-      }
-      if (!parsed.config) parsed.config = INITIAL_DB.config;
-      if (parsed.config.defaultCleaningFee === undefined) parsed.config.defaultCleaningFee = 30000;
-      return parsed;
-    } catch { return INITIAL_DB; }
-  });
-  useEffect(() => {
-    try { localStorage.setItem('uns_db_v6_0', JSON.stringify(db)); }
-    catch (e) { if (e instanceof DOMException && (e.code === 22 || e.name === 'QuotaExceededError')) alert('Almacenamiento lleno. Respalde sus datos desde Configuración.'); }
-  }, [db]);
+  // IndexedDB (Dexie) — reemplaza localStorage
+  const { db, setDb, isLoading: isDbLoading } = useIndexedDB();
 
   // --- ESTADOS ---
   const [isDragging, setIsDragging] = useState(false);
@@ -468,6 +453,18 @@ export default function App() {
   };
 
   // --- RENDER ---
+  if (isDbLoading) {
+    return (
+      <div className="min-h-screen bg-[#0d0f12] flex items-center justify-center">
+        <div className="text-center space-y-4 animate-pulse">
+          <Loader2 className="w-12 h-12 text-blue-500 animate-spin mx-auto" />
+          <div className="text-white font-bold text-lg">Cargando UNS Estate OS...</div>
+          <div className="text-gray-500 text-xs">Inicializando base de datos</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#0d0f12] text-gray-200 font-sans selection:bg-blue-500 selection:text-white overflow-x-hidden">
       <div className="fixed inset-0 pointer-events-none z-0">

@@ -4,7 +4,7 @@
  * Tabs: Propiedad | Empresa | Nómina | Histórico
  */
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Building, Users, DollarSign, Download, FileText, Printer,
   TrendingUp, TrendingDown, Calendar, Save, Trash2, BarChart3,
@@ -78,8 +78,13 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ db, cycle, onUpdateTen
 
   const { exportToExcel, exportToPDF } = useReportExport();
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const history = useMemo(() => loadHistory(), [loadHistory, historyVersion]);
+  // Histórico: carga async desde IndexedDB
+  const [history, setHistory] = useState<{ snapshots: MonthlySnapshot[]; version: string }>({ snapshots: [], version: '1.0' });
+  const refreshHistory = useCallback(async () => {
+    const h = await loadHistory();
+    setHistory(h);
+  }, [loadHistory]);
+  useEffect(() => { refreshHistory(); }, [refreshHistory, historyVersion]);
 
   // Empresas únicas para filtro
   const uniqueCompanies = useMemo(() => {
@@ -159,14 +164,14 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ db, cycle, onUpdateTen
     return history.snapshots.some(s => s.cycle_month === currentCycleMonth);
   }, [history.snapshots, currentCycleMonth]);
 
-  // Cierre de mes
-  const handleCloseMonth = () => {
+  // Cierre de mes (async — IndexedDB)
+  const handleCloseMonth = async () => {
     if (isCurrentMonthClosed) {
       alert(`Ya existe un cierre para ${currentCycleMonth}`);
       return;
     }
     if (!window.confirm(`¿Cerrar el mes ${cycle.month} (${currentCycleMonth})?\n\nEsto guardará un snapshot de todos los reportes actuales.`)) return;
-    const result = saveSnapshot(currentCycleMonth, cycle.start, cycle.end);
+    const result = await saveSnapshot(currentCycleMonth, cycle.start, cycle.end);
     if (result.success) {
       setHistoryVersion(v => v + 1);
       alert(`Cierre de ${cycle.month} guardado correctamente.`);
@@ -707,7 +712,7 @@ export const ReportsView: React.FC<ReportsViewProps> = ({ db, cycle, onUpdateTen
                           </div>
                         </div>
                         <button
-                          onClick={e => { e.stopPropagation(); if (window.confirm(`¿Eliminar cierre ${snap.cycle_month}?`)) { deleteSnapshot(snap.id); setHistoryVersion(v => v + 1); } }}
+                          onClick={async e => { e.stopPropagation(); if (window.confirm(`¿Eliminar cierre ${snap.cycle_month}?`)) { await deleteSnapshot(snap.id); setHistoryVersion(v => v + 1); } }}
                           className="text-gray-600 hover:text-red-400 p-1 transition"
                         >
                           <Trash2 className="w-4 h-4" />
