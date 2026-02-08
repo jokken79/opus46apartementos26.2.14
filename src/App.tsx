@@ -386,6 +386,25 @@ export default function App() {
     setIsPropertyModalOpen(false);
   };
 
+  const handleDeleteProperty = (pid: number) => {
+    const prop = db.properties.find(p => p.id === pid);
+    if (!prop) return;
+    const activeTs = db.tenants.filter(t => t.property_id === pid && t.status === 'active');
+    if (activeTs.length > 0) { alert(`No se puede eliminar "${prop.name}": tiene ${activeTs.length} inquilino(s) activo(s). Dar de baja primero.`); return; }
+    if (!window.confirm(`¿Eliminar propiedad "${prop.name}" permanentemente?\n\nEsta acción no se puede deshacer.`)) return;
+    setDb(prev => ({ ...prev, properties: prev.properties.filter(p => p.id !== pid), tenants: prev.tenants.filter(t => t.property_id !== pid) }));
+    setIsRentManagerOpen(false);
+    setIsPropertyModalOpen(false);
+  };
+
+  const reactivateTenant = (tid: number) => {
+    const tenant = db.tenants.find(t => t.id === tid);
+    if (!tenant) return;
+    if (db.tenants.find(t => t.employee_id === tenant.employee_id && t.status === 'active')) { alert(`社員No ${tenant.employee_id} ya está asignado a otro apartamento.`); return; }
+    if (!window.confirm(`¿Reactivar a ${tenant.name}?`)) return;
+    setDb(prev => ({ ...prev, tenants: prev.tenants.map(t => t.id === tid ? { ...t, status: 'active' as const, exit_date: undefined, cleaning_fee: undefined } : t) }));
+  };
+
   const handleUpdateRentDetails = (tid: number, field: string, val: string) => {
     const v = parseInt(val) || 0;
     setDb(prev => ({ ...prev, tenants: prev.tenants.map(t => t.id === tid ? { ...t, [field]: v } : t) }));
@@ -601,6 +620,7 @@ export default function App() {
                       </div>
                       <div className="flex gap-2 mt-auto">
                         <button onClick={() => { setPropertyForm({ ...p, kanri_hi: p.kanri_hi || 0, billing_mode: p.billing_mode || 'fixed' }); setIsPropertyModalOpen(true); }} className="bg-black/40 hover:bg-black/60 text-gray-300 p-2.5 rounded-lg border border-white/10 transition"><Edit2 className="w-4 h-4"/></button>
+                        <button onClick={() => handleDeleteProperty(p.id)} className="bg-black/40 hover:bg-red-900/40 text-gray-500 hover:text-red-400 p-2.5 rounded-lg border border-white/10 hover:border-red-500/30 transition" title="Eliminar propiedad"><Trash2 className="w-4 h-4"/></button>
                         {propertyViewMode === 'active' && <button onClick={() => openRentManager(p)} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold uppercase tracking-wider py-2.5 rounded-lg shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 transition"><DollarSign className="w-4 h-4" /> Gestión</button>}
                       </div>
                     </GlassCard>
@@ -784,11 +804,12 @@ export default function App() {
                       <div className="col-span-2 text-center">入居</div>
                       <div className="col-span-2 text-center">退去</div>
                       <div className="col-span-2 text-right">最終家賃</div>
-                      <div className="col-span-3 text-right">クリーニング費</div>
+                      <div className="col-span-2 text-right">クリーニング費</div>
+                      <div className="col-span-1"></div>
                     </div>
                     <div className="p-2 space-y-1">
                       {inactiveTenants.map(t => (
-                        <div key={t.id} className="grid grid-cols-12 items-center p-3 rounded-xl bg-black/20 border border-white/5 opacity-70">
+                        <div key={t.id} className="grid grid-cols-12 items-center p-3 rounded-xl bg-black/20 border border-white/5 opacity-70 hover:opacity-100 transition-opacity">
                           <div className="col-span-3">
                             <div className="text-gray-400 text-sm font-bold truncate">{t.name}</div>
                             <div className="text-[10px] text-gray-600 font-mono">{t.employee_id}</div>
@@ -802,9 +823,11 @@ export default function App() {
                           <div className="col-span-2 text-right">
                             <div className="text-[10px] text-gray-500 font-mono">¥{(t.rent_contribution || 0).toLocaleString()}</div>
                           </div>
-                          <div className="col-span-3 text-right">
+                          <div className="col-span-2 text-right">
                             <div className="text-[10px] text-red-400 font-mono font-bold">¥{(t.cleaning_fee || 0).toLocaleString()}</div>
-                            <div className="text-[9px] text-gray-600">limpieza</div>
+                          </div>
+                          <div className="col-span-1 text-right">
+                            <button onClick={() => reactivateTenant(t.id)} className="text-gray-600 hover:text-green-400 transition p-1" title="Reactivar inquilino"><UserPlus className="w-3.5 h-3.5"/></button>
                           </div>
                         </div>
                       ))}
