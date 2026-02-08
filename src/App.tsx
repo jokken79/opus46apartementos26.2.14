@@ -290,7 +290,7 @@ export default function App() {
     const target = ap.reduce((a, p) => a + (p.rent_price_uns || 0), 0);
     const alerts: AlertItem[] = [];
     const today = new Date();
-    ap.forEach(p => { if (p.contract_end) { const d = Math.ceil(Math.abs(new Date(p.contract_end).getTime() - today.getTime()) / 86400000); if (d <= 60) alerts.push({ type: 'warning', msg: `${p.name}: contrato vence en ${d} días.` }); } });
+    ap.forEach(p => { if (p.contract_end) { const d = Math.ceil((new Date(p.contract_end).getTime() - today.getTime()) / 86400000); if (d > 0 && d <= 60) alerts.push({ type: 'warning', msg: `${p.name}: contrato vence en ${d} días.` }); if (d <= 0) alerts.push({ type: 'danger', msg: `${p.name}: contrato vencido.` }); } });
     const zr = db.tenants.filter(t => t.status === 'active' && t.rent_contribution === 0);
     if (zr.length > 0) alerts.push({ type: 'danger', msg: `${zr.length} inquilinos con renta ¥0.` });
     return { totalProperties: ap.length, occupiedCount: occ, totalCapacity: cap, occupancyRate: cap > 0 ? Math.round(occ / cap * 100) : 0, profit: col - cost, totalCollected: col, totalPropCost: cost, totalTargetUNS: target, alerts };
@@ -347,12 +347,16 @@ export default function App() {
   const openRentManager = (p: Property) => { setSelectedPropertyForRent(p); setIsRentManagerOpen(true); };
 
   const handleSaveProperty = (e: React.FormEvent) => {
-    e.preventDefault(); const newDb: AppDatabase = JSON.parse(JSON.stringify(db));
+    e.preventDefault();
     const addr = propertyForm.postal_code ? `〒${propertyForm.postal_code} ${propertyForm.address_auto} ${propertyForm.address_detail}` : `${propertyForm.address_auto} ${propertyForm.address_detail}`;
     const cp = { ...propertyForm, address: addr.trim(), capacity: parseInt(propertyForm.capacity) || 0, rent_cost: parseInt(propertyForm.rent_cost) || 0, rent_price_uns: parseInt(propertyForm.rent_price_uns) || 0, parking_cost: parseInt(propertyForm.parking_cost) || 0, kanri_hi: parseInt(propertyForm.kanri_hi) || 0 };
-    if (propertyForm.id) { const i = newDb.properties.findIndex(p => p.id === propertyForm.id); if (i >= 0) newDb.properties[i] = cp; }
-    else newDb.properties.push({ ...cp, id: Date.now() });
-    setDb(newDb); setIsPropertyModalOpen(false);
+    setDb(prev => {
+      const newProps = [...prev.properties];
+      if (propertyForm.id) { const i = newProps.findIndex(p => p.id === propertyForm.id); if (i >= 0) newProps[i] = cp; }
+      else newProps.push({ ...cp, id: Date.now() });
+      return { ...prev, properties: newProps };
+    });
+    setIsPropertyModalOpen(false);
   };
 
   const handleUpdateRentDetails = (tid: number, field: string, val: string) => {
@@ -362,17 +366,19 @@ export default function App() {
 
   const distributeRentEvenly = () => {
     if (!selectedPropertyForRent) return;
-    const ts = db.tenants.filter(t => t.property_id === selectedPropertyForRent.id && t.status === 'active');
-    if (ts.length === 0) { alert('No hay inquilinos activos para dividir la renta.'); return; }
-    const split = Math.floor(selectedPropertyForRent.rent_price_uns / ts.length);
-    const remainder = selectedPropertyForRent.rent_price_uns % ts.length;
-    setDb(prev => ({ ...prev, tenants: prev.tenants.map((t, i) => {
-      if (t.property_id === selectedPropertyForRent.id && t.status === 'active') {
-        const idx = ts.findIndex(x => x.id === t.id);
-        return { ...t, rent_contribution: idx === 0 ? split + remainder : split };
-      }
-      return t;
-    })}));
+    setDb(prev => {
+      const ts = prev.tenants.filter(t => t.property_id === selectedPropertyForRent.id && t.status === 'active');
+      if (ts.length === 0) return prev;
+      const split = Math.floor(selectedPropertyForRent.rent_price_uns / ts.length);
+      const remainder = selectedPropertyForRent.rent_price_uns % ts.length;
+      return { ...prev, tenants: prev.tenants.map(t => {
+        if (t.property_id === selectedPropertyForRent.id && t.status === 'active') {
+          const idx = ts.findIndex(x => x.id === t.id);
+          return { ...t, rent_contribution: idx === 0 ? split + remainder : split };
+        }
+        return t;
+      })};
+    });
   };
 
   const handleAddTenant = (e: React.FormEvent) => {

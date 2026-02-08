@@ -247,7 +247,7 @@ export function useReports(db: AppDatabase) {
       total_cost: propertyTotals.total_rent_cost,
       total_target: propertyTotals.total_rent_target,
       profit: propertyTotals.total_profit,
-      occupancy_rate: propertyTotals.total_properties > 0
+      occupancy_rate: (propertyTotals.total_occupants + propertyTotals.total_vacancy) > 0
         ? Math.round(propertyTotals.total_occupants / (propertyTotals.total_occupants + propertyTotals.total_vacancy) * 100)
         : 0,
       company_summary: [...companyReport],
