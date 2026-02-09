@@ -17,7 +17,10 @@ import type { AppDatabase } from '../types/database';
 const INITIAL_DB: AppDatabase = {
   properties: [],
   tenants: [],
-  employees: [],
+  employees: [], // Legacy
+  employeesGenzai: [], // 派遣 (Haken)
+  employeesUkeoi: [],  // 請負 - 岡山
+  employeesStaff: [],  // 事務所
   config: { companyName: 'UNS-KIKAKU', closingDay: 0, defaultCleaningFee: 30000 },
 };
 
@@ -25,7 +28,7 @@ const INITIAL_DB: AppDatabase = {
 async function persistToIndexedDB(data: AppDatabase): Promise<void> {
   try {
     await unsDB.transaction('rw',
-      [unsDB.properties, unsDB.tenants, unsDB.employees, unsDB.config],
+      [unsDB.properties, unsDB.tenants, unsDB.employees, unsDB.employeesGenzai, unsDB.employeesUkeoi, unsDB.employeesStaff, unsDB.config],
       async () => {
         // Properties: sincronizar (clear + bulkPut para manejar borrados)
         await unsDB.properties.clear();
@@ -39,10 +42,28 @@ async function persistToIndexedDB(data: AppDatabase): Promise<void> {
           await unsDB.tenants.bulkPut(data.tenants);
         }
 
-        // Employees
+        // Employees (Legacy)
         await unsDB.employees.clear();
         if (data.employees.length > 0) {
           await unsDB.employees.bulkPut(data.employees);
+        }
+
+        // Employees Genzai (派遣)
+        await unsDB.employeesGenzai.clear();
+        if (data.employeesGenzai.length > 0) {
+          await unsDB.employeesGenzai.bulkPut(data.employeesGenzai);
+        }
+
+        // Employees Ukeoi (請負 - 岡山)
+        await unsDB.employeesUkeoi.clear();
+        if (data.employeesUkeoi.length > 0) {
+          await unsDB.employeesUkeoi.bulkPut(data.employeesUkeoi);
+        }
+
+        // Employees Staff (事務所)
+        await unsDB.employeesStaff.clear();
+        if (data.employeesStaff.length > 0) {
+          await unsDB.employeesStaff.bulkPut(data.employeesStaff);
         }
 
         // Config
@@ -63,11 +84,14 @@ async function persistToIndexedDB(data: AppDatabase): Promise<void> {
 async function clearAllIndexedDB(): Promise<void> {
   try {
     await unsDB.transaction('rw',
-      [unsDB.properties, unsDB.tenants, unsDB.employees, unsDB.config, unsDB.snapshots, unsDB.meta],
+      [unsDB.properties, unsDB.tenants, unsDB.employees, unsDB.employeesGenzai, unsDB.employeesUkeoi, unsDB.employeesStaff, unsDB.config, unsDB.snapshots, unsDB.meta],
       async () => {
         await unsDB.properties.clear();
         await unsDB.tenants.clear();
         await unsDB.employees.clear();
+        await unsDB.employeesGenzai.clear();
+        await unsDB.employeesUkeoi.clear();
+        await unsDB.employeesStaff.clear();
         await unsDB.config.clear();
         await unsDB.snapshots.clear();
         await unsDB.meta.clear();
@@ -81,10 +105,13 @@ async function clearAllIndexedDB(): Promise<void> {
 // Cargar todos los datos de IndexedDB
 async function loadFromIndexedDB(): Promise<AppDatabase> {
   try {
-    const [properties, tenants, employees, configRow] = await Promise.all([
+    const [properties, tenants, employees, employeesGenzai, employeesUkeoi, employeesStaff, configRow] = await Promise.all([
       unsDB.properties.toArray(),
       unsDB.tenants.toArray(),
       unsDB.employees.toArray(),
+      unsDB.employeesGenzai.toArray(),
+      unsDB.employeesUkeoi.toArray(),
+      unsDB.employeesStaff.toArray(),
       unsDB.config.get('main'),
     ]);
 
@@ -92,12 +119,15 @@ async function loadFromIndexedDB(): Promise<AppDatabase> {
       properties,
       tenants,
       employees,
+      employeesGenzai,
+      employeesUkeoi,
+      employeesStaff,
       config: configRow
         ? {
-            companyName: configRow.companyName,
-            closingDay: configRow.closingDay,
-            defaultCleaningFee: configRow.defaultCleaningFee,
-          }
+          companyName: configRow.companyName,
+          closingDay: configRow.closingDay,
+          defaultCleaningFee: configRow.defaultCleaningFee,
+        }
         : INITIAL_DB.config,
     };
   } catch (error) {
@@ -138,6 +168,9 @@ export function useIndexedDB() {
                   properties: parsed.properties || [],
                   tenants: parsed.tenants || [],
                   employees: parsed.employees || [],
+                  employeesGenzai: parsed.employeesGenzai || [],
+                  employeesUkeoi: parsed.employeesUkeoi || [],
+                  employeesStaff: parsed.employeesStaff || [],
                   config: {
                     companyName: parsed.config?.companyName || 'UNS-KIKAKU',
                     closingDay: parsed.config?.closingDay ?? 0,
@@ -172,6 +205,9 @@ export function useIndexedDB() {
                 properties: parsed.properties || [],
                 tenants: parsed.tenants || [],
                 employees: parsed.employees || [],
+                employeesGenzai: parsed.employeesGenzai || [],
+                employeesUkeoi: parsed.employeesUkeoi || [],
+                employeesStaff: parsed.employeesStaff || [],
                 config: {
                   companyName: parsed.config?.companyName || 'UNS-KIKAKU',
                   closingDay: parsed.config?.closingDay ?? 0,

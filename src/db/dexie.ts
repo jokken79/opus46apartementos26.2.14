@@ -23,17 +23,24 @@ export interface DBMeta {
 class UNSDatabase extends Dexie {
   properties!: Table<Property, number>;
   tenants!: Table<Tenant, number>;
-  employees!: Table<Employee, string>;
+  employees!: Table<Employee, string>; // Legacy
+  employeesGenzai!: Table<Employee, string>; // 派遣 (Haken)
+  employeesUkeoi!: Table<Employee, string>;  // 請負 - 岡山
+  employeesStaff!: Table<Employee, string>;  // 事務所
   config!: Table<DBConfig, string>;
   snapshots!: Table<MonthlySnapshot, string>;
   meta!: Table<DBMeta, string>;
 
   constructor() {
     super('UNSEstateOS');
-    this.version(1).stores({
+    // Version 2: añade tablas separadas por categoría de empleado
+    this.version(2).stores({
       properties: 'id, name, contract_end',
       tenants: 'id, property_id, employee_id, status, [property_id+status]',
       employees: 'id, name_kana, company',
+      employeesGenzai: 'id, name_kana, company',
+      employeesUkeoi: 'id, name_kana, company',
+      employeesStaff: 'id, name_kana, company',
       config: 'key',
       snapshots: 'id, &cycle_month',
       meta: 'key',

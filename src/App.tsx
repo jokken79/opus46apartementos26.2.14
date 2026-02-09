@@ -74,6 +74,7 @@ export default function App() {
   const [companyFilter, setCompanyFilter] = useState('');
   const [empSearch, setEmpSearch] = useState('');
   const [empPage, setEmpPage] = useState(1);
+  const [empCategory, setEmpCategory] = useState<'genzai' | 'ukeoi' | 'staff'>('genzai');
   const EMP_PER_PAGE = 50;
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
 
@@ -142,6 +143,9 @@ export default function App() {
           properties: d.properties || [],
           tenants: d.tenants || [],
           employees: d.employees || [],
+          employeesGenzai: d.employeesGenzai || [],
+          employeesUkeoi: d.employeesUkeoi || [],
+          employeesStaff: d.employeesStaff || [],
           config: { companyName: d.config?.companyName || 'UNS-KIKAKU', closingDay: d.config?.closingDay ?? 0, defaultCleaningFee: d.config?.defaultCleaningFee ?? 30000 },
         });
         alert('Restaurado!');
@@ -154,11 +158,13 @@ export default function App() {
   // --- EMPLOYEE LOOKUP ---
   useEffect(() => {
     if (tenantForm.employee_id.length > 2) {
-      const f = db.employees.find(e => String(e.id) === String(tenantForm.employee_id));
+      // Buscar en las 3 tablas de empleados
+      const allEmployees = [...db.employeesGenzai, ...db.employeesUkeoi, ...db.employeesStaff];
+      const f = allEmployees.find(e => String(e.id) === String(tenantForm.employee_id));
       if (f) { setTenantForm((p: any) => ({ ...p, name: f.name, name_kana: f.name_kana || '', company: f.company || '' })); setIsIdFound(true); }
       else setIsIdFound(false);
     } else setIsIdFound(false);
-  }, [tenantForm.employee_id, db.employees]);
+  }, [tenantForm.employee_id, db.employeesGenzai, db.employeesUkeoi, db.employeesStaff]);
 
   // --- ADDRESS ---
   const fetchAddressFromZip = async () => {
@@ -190,7 +196,16 @@ export default function App() {
   }, [db.properties, db.tenants, searchTerm, companyFilter]);
 
   const filteredEmployees = useMemo(() => {
-    let result = db.employees;
+    // Seleccionar la tabla según la categoría actual
+    let source: Employee[];
+    switch (empCategory) {
+      case 'genzai': source = db.employeesGenzai; break;
+      case 'ukeoi': source = db.employeesUkeoi; break;
+      case 'staff': source = db.employeesStaff; break;
+      default: source = db.employeesGenzai;
+    }
+
+    let result = source;
     // Filtro local (tab empleados)
     const local = empSearch.toLowerCase();
     if (local) result = result.filter(e => e.id.includes(local) || e.name.toLowerCase().includes(local) || e.name_kana.toLowerCase().includes(local) || e.company.toLowerCase().includes(local));
@@ -198,7 +213,7 @@ export default function App() {
     const global = searchTerm.toLowerCase();
     if (global) result = result.filter(e => e.id.includes(global) || e.name.toLowerCase().includes(global) || e.name_kana.toLowerCase().includes(global) || e.company.toLowerCase().includes(global));
     return result;
-  }, [db.employees, empSearch, searchTerm]);
+  }, [db.employeesGenzai, db.employeesUkeoi, db.employeesStaff, empCategory, empSearch, searchTerm]);
 
   // Inquilinos filtrados por búsqueda global
   const filteredTenants = useMemo(() => {
@@ -255,20 +270,23 @@ export default function App() {
     if (!editingEmployee) return;
     if (!editingEmployee.id.trim() || !editingEmployee.name.trim()) { alert('ID y nombre son obligatorios.'); return; }
     setDb(prev => {
-      const idx = prev.employees.findIndex(e => e.id === editingEmployee.id);
-      if (idx >= 0) { const emps = [...prev.employees]; emps[idx] = editingEmployee; return { ...prev, employees: emps }; }
+      const tableKey = empCategory === 'genzai' ? 'employeesGenzai' : empCategory === 'ukeoi' ? 'employeesUkeoi' : 'employeesStaff';
+      const table = [...prev[tableKey]];
+      const idx = table.findIndex(e => e.id === editingEmployee.id);
+      if (idx >= 0) { table[idx] = editingEmployee; return { ...prev, [tableKey]: table }; }
       return prev;
     });
     setEditingEmployee(null);
   };
 
   const handleDeleteEmployee = (empId: string) => {
-    const emp = db.employees.find(e => e.id === empId);
+    const tableKey = empCategory === 'genzai' ? 'employeesGenzai' : empCategory === 'ukeoi' ? 'employeesUkeoi' : 'employeesStaff';
+    const emp = db[tableKey].find(e => e.id === empId);
     if (!emp) return;
     const isAssigned = db.tenants.some(t => t.employee_id === empId && t.status === 'active');
     if (isAssigned) { alert(`No se puede eliminar: ${emp.name} está asignado a una propiedad activa.`); return; }
     if (!window.confirm(`¿Eliminar empleado "${emp.name}" (${empId})?`)) return;
-    setDb(prev => ({ ...prev, employees: prev.employees.filter(e => e.id !== empId) }));
+    setDb(prev => ({ ...prev, [tableKey]: prev[tableKey].filter(e => e.id !== empId) }));
   };
 
   const handleUpdateRentDetails = (tid: number, field: string, val: string) => {
@@ -353,8 +371,10 @@ export default function App() {
         if (empSheets.length > 0) {
           let mergedData: any[] = [];
           empSheets.forEach(sheetName => {
-            const sheetData = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval: "" });
-            mergedData = [...mergedData, ...sheetData];
+            const sheetData: any[] = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval: "" });
+            // Guardar el nombre de la hoja para lógica de asignación
+            const dataWithSheet = sheetData.map(row => ({ ...row, _sheet: sheetName }));
+            mergedData = [...mergedData, ...dataWithSheet];
           });
           setPreviewData(mergedData);
           setDetectedType('employees');
@@ -362,8 +382,9 @@ export default function App() {
           setImportStatus({ type: 'success', msg: 'OK' });
         } else if (sn.length === 1 && !prop && !ten) {
           // Fallback: si solo hay una hoja y no es de renta, asumimos que son empleados
-          const d = XLSX.utils.sheet_to_json(wb.Sheets[sn[0]], { defval: "" });
-          setPreviewData(d);
+          const d: any[] = XLSX.utils.sheet_to_json(wb.Sheets[sn[0]], { defval: "" });
+          const dataWithSheet = d.map(row => ({ ...row, _sheet: sn[0] }));
+          setPreviewData(dataWithSheet);
           setDetectedType('employees');
           setPreviewSummary(`社員台帳 (Hoja única: ${sn[0]}): ${d.length} empleados detectados.`);
           setImportStatus({ type: 'success', msg: 'OK' });
@@ -381,46 +402,105 @@ export default function App() {
   const saveToDatabase = () => {
     const newDb: AppDatabase = JSON.parse(JSON.stringify(db)); let tab = 'dashboard';
     if (detectedType === 'employees') {
-      let count = 0;
+      let countGenzai = 0, countUkeoi = 0, countStaff = 0;
+
       previewData.forEach((r: any) => {
         const keys = Object.keys(r);
         if (keys.length === 0) return;
 
-        // DETECCIÓN AGRESIVA - Normalizar todas las llaves a minúsculas y sin espacios
-        const findKey = (candidates: string[]) => {
-          return keys.find(k => {
-            const normalized = k.trim().toLowerCase().replace(/\s/g, '');
-            return candidates.some(c => normalized === c || normalized.includes(c));
-          });
-        };
+        const sourceSheet = String(r._sheet || '').toLowerCase();
 
-        const idKey = findKey(['社員no', '社員ｎｏ', '社員番号', '社員コード', '社員ｺｰﾄﾞ', 'id', 'no', 'no.', 'コード', 'ｺｰﾄﾞ', 'empid', 'staffid', '番号']) || keys[0];
-        const nameKey = findKey(['氏名', '名前', 'name', 'fullname', 'staffname', '氏名漢', '名称', '氏名（漢字）', '氏名(漢字)']) || (keys[1] || keys[0]);
-        const kanaKey = findKey(['カナ', 'かな', 'kana', '氏名カナ', 'ﾌﾘｶﾞﾅ', 'フリガナ', '氏名（カナ）', '氏名(kana)']);
-        // Priorizar nombres sobre códigos para 派遣先
-        const companyKey = findKey(['派遣先名', '派遣先名称', '会社名', '派遣先', 'company', 'workplace', '所属', '部署', '派遣']);
+        // ============================================================
+        // LÓGICA ESPECÍFICA POR TIPO DE HOJA
+        // ============================================================
+        let employeeId = '';
+        let employeeName = '';
+        let employeeKana = '';
+        let employeeCompany = '';
+        let targetTable: 'genzai' | 'ukeoi' | 'staff' | 'legacy' = 'legacy';
 
-        const id = r[idKey];
-        const nm = r[nameKey];
+        if (sourceSheet.includes('genzai')) {
+          // DBGenzaiX: ID en columna B (社員№), 派遣先 en columna D, Nombre en columna H
+          employeeId = String(r['社員№'] || r['社員No'] || r['社員no'] || '').trim();
+          employeeName = String(r['氏名'] || '').trim();
+          employeeKana = String(r['カナ'] || r['氏名カナ'] || '').trim();
+          // 派遣先 está explícitamente en una columna llamada 派遣先
+          employeeCompany = String(r['派遣先'] || '').trim();
+          targetTable = 'genzai';
 
-        // Si falló la detección por nombre de columna, no saltar si hay datos en las columnas detectadas por posición
-        if ((id === undefined || id === null || id === '') && (nm === undefined || nm === null || nm === '')) return;
+        } else if (sourceSheet.includes('ukeoi')) {
+          // DBUkeoiX: ID en columna B (社員№), NO hay 派遣先 → siempre "岡山"
+          employeeId = String(r['社員№'] || r['社員No'] || r['社員no'] || '').trim();
+          employeeName = String(r['氏名'] || '').trim();
+          employeeKana = String(r['カナ'] || r['氏名カナ'] || '').trim();
+          employeeCompany = '岡山'; // Valor fijo para Ukeoi
+          targetTable = 'ukeoi';
+
+        } else if (sourceSheet.includes('staff')) {
+          // DBStaffX: ID en columna B (社員№), siempre "事務所" (trabajan en oficina)
+          employeeId = String(r['社員№'] || r['社員No'] || r['社員no'] || '').trim();
+          employeeName = String(r['氏名'] || '').trim();
+          employeeKana = String(r['カナ'] || r['氏名カナ'] || '').trim();
+          employeeCompany = '事務所'; // Valor fijo para Staff
+          targetTable = 'staff';
+
+        } else {
+          // FALLBACK: Detección genérica para otras hojas
+          const findKey = (candidates: string[]) => {
+            return keys.find(k => {
+              const normalized = k.trim().toLowerCase().replace(/\s/g, '');
+              return candidates.some(c => normalized === c || normalized.includes(c));
+            });
+          };
+
+          const idKey = findKey(['社員no', '社員ｎｏ', '社員番号', '社員コード', '社員ｺｰﾄﾞ', 'id', 'no', 'no.', 'コード', 'ｺｰﾄﾞ', 'empid', 'staffid', '番号']) || keys[0];
+          const nameKey = findKey(['氏名', '名前', 'name', 'fullname', 'staffname', '氏名漢', '名称']) || (keys[1] || keys[0]);
+          const kanaKey = findKey(['カナ', 'かな', 'kana', '氏名カナ', 'ﾌﾘｶﾞﾅ', 'フリガナ']);
+          const companyKey = findKey(['派遣先', 'company', 'workplace', '所属', '部署']);
+
+          employeeId = String(r[idKey] || '').trim();
+          employeeName = String(r[nameKey] || '').trim();
+          employeeKana = String(kanaKey ? r[kanaKey] : '').trim();
+          employeeCompany = String(companyKey ? r[companyKey] : '').trim();
+          targetTable = 'legacy';
+        }
+
+        // Skip si no hay ID ni nombre válido
+        if (!employeeId && !employeeName) return;
 
         const emp: Employee = {
-          id: String(id || 'N/A').trim(),
-          name: String(nm || 'Sin Nombre').trim(),
-          name_kana: String(kanaKey ? r[kanaKey] : '').trim(),
-          company: String(companyKey ? r[companyKey] : '').trim(),
+          id: employeeId || 'N/A',
+          name: employeeName || 'Sin Nombre',
+          name_kana: employeeKana,
+          company: employeeCompany,
           full_data: r
         };
 
-        // Evitar duplicados por ID
-        const i = newDb.employees.findIndex(e => e.id === emp.id);
-        if (i >= 0) newDb.employees[i] = emp;
-        else newDb.employees.push(emp);
-        count++;
+        // Guardar en la tabla correspondiente
+        if (targetTable === 'genzai') {
+          const i = newDb.employeesGenzai.findIndex(e => e.id === emp.id);
+          if (i >= 0) newDb.employeesGenzai[i] = emp;
+          else newDb.employeesGenzai.push(emp);
+          countGenzai++;
+        } else if (targetTable === 'ukeoi') {
+          const i = newDb.employeesUkeoi.findIndex(e => e.id === emp.id);
+          if (i >= 0) newDb.employeesUkeoi[i] = emp;
+          else newDb.employeesUkeoi.push(emp);
+          countUkeoi++;
+        } else if (targetTable === 'staff') {
+          const i = newDb.employeesStaff.findIndex(e => e.id === emp.id);
+          if (i >= 0) newDb.employeesStaff[i] = emp;
+          else newDb.employeesStaff.push(emp);
+          countStaff++;
+        } else {
+          // Legacy fallback
+          const i = newDb.employees.findIndex(e => e.id === emp.id);
+          if (i >= 0) newDb.employees[i] = emp;
+          else newDb.employees.push(emp);
+        }
       });
-      console.log(`[Import] Procesados ${count} empleados.`);
+
+      console.log(`[Import] Genzai: ${countGenzai}, Ukeoi: ${countUkeoi}, Staff: ${countStaff}`);
       tab = 'employees';
     } else if (detectedType === 'rent_management') {
       const { properties, tenants } = previewData;
@@ -627,10 +707,38 @@ export default function App() {
           {activeTab === 'employees' && (
             <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
               <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                <div><h2 className="text-3xl font-black text-white">社員台帳</h2><p className="text-gray-500 text-sm">Base de datos de empleados — {db.employees.length} registros</p></div>
+                <div>
+                  <h2 className="text-3xl font-black text-white">社員台帳</h2>
+                  <p className="text-gray-500 text-sm">
+                    派遣: {db.employeesGenzai.length} | 請負: {db.employeesUkeoi.length} | 事務所: {db.employeesStaff.length}
+                  </p>
+                </div>
                 <button onClick={() => setActiveTab('import')} className="bg-green-600 hover:bg-green-500 text-white px-6 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 shadow-lg shadow-green-500/20"><UploadCloud className="w-4 h-4" /> Importar 社員台帳</button>
               </div>
-              {db.employees.length === 0 ? (
+
+              {/* Tabs para categorías de empleados */}
+              <div className="flex gap-2 bg-[#15171c] p-1.5 rounded-xl border border-white/10 w-fit">
+                <button
+                  onClick={() => { setEmpCategory('genzai'); setEmpPage(1); }}
+                  className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${empCategory === 'genzai' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                >
+                  派遣 <span className="text-xs opacity-70">({db.employeesGenzai.length})</span>
+                </button>
+                <button
+                  onClick={() => { setEmpCategory('ukeoi'); setEmpPage(1); }}
+                  className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${empCategory === 'ukeoi' ? 'bg-orange-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                >
+                  請負 岡山 <span className="text-xs opacity-70">({db.employeesUkeoi.length})</span>
+                </button>
+                <button
+                  onClick={() => { setEmpCategory('staff'); setEmpPage(1); }}
+                  className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${empCategory === 'staff' ? 'bg-purple-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                >
+                  事務所 <span className="text-xs opacity-70">({db.employeesStaff.length})</span>
+                </button>
+              </div>
+
+              {filteredEmployees.length === 0 && (db.employeesGenzai.length + db.employeesUkeoi.length + db.employeesStaff.length) === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-center">
                   <div className="bg-gray-900 p-6 rounded-full mb-6 border border-gray-800"><Table2 className="w-12 h-12 text-gray-600" /></div>
                   <h3 className="text-2xl font-bold text-white mb-2">Sin empleados</h3>

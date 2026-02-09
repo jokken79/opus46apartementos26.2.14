@@ -59,6 +59,9 @@ export interface Employee {
   full_data: Record<string, unknown>; // Datos raw del Excel
 }
 
+// Tipo de empleado según origen
+export type EmployeeCategory = 'genzai' | 'ukeoi' | 'staff';
+
 // ============ CONFIGURACIÓN ============
 export interface AppConfig {
   companyName: string;
@@ -70,7 +73,11 @@ export interface AppConfig {
 export interface AppDatabase {
   properties: Property[];
   tenants: Tenant[];
-  employees: Employee[];
+  employees: Employee[]; // Legacy - compatibilidad
+  // Tablas separadas por categoría
+  employeesGenzai: Employee[]; // 派遣 (Haken)
+  employeesUkeoi: Employee[];  // 請負 (Ukeoi) - 岡山
+  employeesStaff: Employee[];  // 事務所 (Staff - Oficina)
   config: AppConfig;
 }
 
