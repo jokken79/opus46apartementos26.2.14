@@ -46,6 +46,56 @@ const calculateProRata = (monthlyAmount: number, entryDate: string) => {
 const EMPTY_PROPERTY_FORM = { id: null as number | null, name: '', room_number: '', postal_code: '', address_auto: '', address_detail: '', manager_name: '', manager_phone: '', contract_start: new Date().toISOString().split('T')[0], contract_end: '', type: '1K', capacity: 2, rent_cost: 0, rent_price_uns: 0, parking_cost: 0, parking_capacity: 0, kanri_hi: 0, billing_mode: 'fixed' as const };
 const EMPTY_TENANT_FORM = { employee_id: '', name: '', name_kana: '', company: '', property_id: '' as string | number, rent_contribution: 0, parking_fee: 0, entry_date: new Date().toISOString().split('T')[0] };
 
+type UnknownObject = Record<string, unknown>;
+
+const normalizeHeaderKey = (k: string): string => k.trim().toLowerCase().replace(/[\s　]/g, '');
+
+const getFirstFieldValue = (obj: UnknownObject, keys: string[]): unknown => {
+  const normalized: Record<string, string> = {};
+  Object.keys(obj).forEach(k => { normalized[normalizeHeaderKey(k)] = k; });
+  for (const key of keys) {
+    const real = normalized[normalizeHeaderKey(key)];
+    if (real) return obj[real];
+  }
+  return undefined;
+};
+
+const parseZaishokuLike = (value: unknown): boolean | null => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value !== 0;
+  const s = String(value).trim();
+  if (!s) return null;
+  const n = s.toLowerCase();
+  if (['1', 'true', 'yes', 'y', 'on', 'ok', '○', '〇', '在職', '在職中', '在籍', '在籍中', '現職'].includes(n)) return true;
+  if (['0', 'false', 'no', 'n', 'off', '×', '退職', '離職'].includes(n)) return false;
+  if (n.includes('退職') || n.includes('離職')) return false;
+  if (n.includes('在職') || n.includes('在籍')) return true;
+  return null;
+};
+
+const isEmployeeZaishoku = (emp: Employee): boolean => {
+  const raw = (emp.full_data || {}) as UnknownObject;
+
+  // Si hay una fecha de retiro, asumimos NO en activo.
+  const retiredDate = getFirstFieldValue(raw, ['退職日', '離職日', '退社日', '退職年月日', '離職年月日']);
+  if (retiredDate !== undefined && String(retiredDate).trim() !== '') return false;
+
+  // Flags explícitos de retiro.
+  const retiredFlag = getFirstFieldValue(raw, ['退職', '離職', '退職フラグ', '退職区分', '退職済']);
+  const retiredParsed = parseZaishokuLike(retiredFlag);
+  if (retiredParsed === true) return false;
+  if (typeof retiredFlag === 'string' && (retiredFlag.includes('退職') || retiredFlag.includes('離職'))) return false;
+
+  // Flags explícitos de en-activo.
+  const zaishokuFlag = getFirstFieldValue(raw, ['在職中', '在職', '在籍', '在籍中', '就業中', '勤務中']);
+  const zaishokuParsed = parseZaishokuLike(zaishokuFlag);
+  if (zaishokuParsed !== null) return zaishokuParsed;
+
+  // Sin dato: no filtramos por defecto.
+  return true;
+};
+
 // ============================================
 // ============ APP PRINCIPAL =================
 // ============================================
@@ -75,6 +125,7 @@ export default function App() {
   const [empSearch, setEmpSearch] = useState('');
   const [empPage, setEmpPage] = useState(1);
   const [empCategory, setEmpCategory] = useState<'genzai' | 'ukeoi' | 'staff'>('genzai');
+  const [empOnlyZaishoku, setEmpOnlyZaishoku] = useState(false);
   const EMP_PER_PAGE = 50;
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
 
@@ -212,8 +263,11 @@ export default function App() {
     // Filtro global (header search) — se aplica además del local
     const global = searchTerm.toLowerCase();
     if (global) result = result.filter(e => e.id.includes(global) || e.name.toLowerCase().includes(global) || e.name_kana.toLowerCase().includes(global) || e.company.toLowerCase().includes(global));
+
+    // Filtro: solo en activo (在職中)
+    if (empOnlyZaishoku) result = result.filter(isEmployeeZaishoku);
     return result;
-  }, [db.employeesGenzai, db.employeesUkeoi, db.employeesStaff, empCategory, empSearch, searchTerm]);
+  }, [db.employeesGenzai, db.employeesUkeoi, db.employeesStaff, empCategory, empSearch, searchTerm, empOnlyZaishoku]);
 
   // Inquilinos filtrados por búsqueda global
   const filteredTenants = useMemo(() => {
@@ -747,10 +801,26 @@ export default function App() {
                 </div>
               ) : (
                 <>
-                  <div className="flex items-center bg-[#15171c] border border-white/10 rounded-xl px-4 py-3 focus-within:border-blue-500/50 transition-all">
-                    <Search className="w-4 h-4 text-gray-500" />
-                    <input type="text" placeholder="Buscar por ID, nombre, カナ, empresa..." className="bg-transparent border-none outline-none text-sm text-white w-full ml-3 placeholder-gray-600" value={empSearch} onChange={e => { setEmpSearch(e.target.value); setEmpPage(1); }} />
-                    {empSearch && <button onClick={() => setEmpSearch('')} className="text-gray-500 hover:text-white"><X className="w-4 h-4" /></button>}
+                  <div className="flex flex-col md:flex-row gap-3">
+                    <div className="flex items-center bg-[#15171c] border border-white/10 rounded-xl px-4 py-3 focus-within:border-blue-500/50 transition-all flex-1">
+                      <Search className="w-4 h-4 text-gray-500" />
+                      <input type="text" placeholder="Buscar por ID, nombre, カナ, empresa..." className="bg-transparent border-none outline-none text-sm text-white w-full ml-3 placeholder-gray-600" value={empSearch} onChange={e => { setEmpSearch(e.target.value); setEmpPage(1); }} />
+                      {empSearch && <button onClick={() => setEmpSearch('')} className="text-gray-500 hover:text-white"><X className="w-4 h-4" /></button>}
+                    </div>
+                    <button
+                      onClick={() => { setEmpOnlyZaishoku(v => !v); setEmpPage(1); }}
+                      title="Filtra por columna 在職中/退職日 si existe en el Excel."
+                      className={`px-4 py-3 rounded-xl border text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${
+                        empOnlyZaishoku
+                          ? 'bg-green-500/15 border-green-500/30 text-green-300 shadow-lg shadow-green-500/10'
+                          : 'bg-[#15171c] border-white/10 text-gray-400 hover:text-white hover:bg-white/5'
+                      }`}
+                    >
+                      在職中のみ
+                      <span className={`text-[10px] font-mono normal-case tracking-normal ${empOnlyZaishoku ? 'text-green-400/80' : 'text-gray-600'}`}>
+                        (solo activos)
+                      </span>
+                    </button>
                   </div>
                   <GlassCard hoverEffect={false} className="overflow-hidden">
                     <div className="overflow-x-auto">
