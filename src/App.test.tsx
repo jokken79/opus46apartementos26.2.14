@@ -12,10 +12,23 @@ jest.mock('./hooks/useIndexedDB', () => ({
   }),
 }));
 
+// Mock useExcelImport
+jest.mock('./hooks/useExcelImport', () => ({
+  useExcelImport: () => ({
+    importStatus: { type: '', msg: '' },
+    setImportStatus: jest.fn(),
+    previewData: [],
+    detectedType: null,
+    previewSummary: '',
+    processExcelFile: jest.fn(),
+    saveToDatabase: jest.fn(),
+  }),
+}));
+
 test('renders UNS Estate OS header', () => {
   render(<App />);
   expect(screen.getByText(/UNS-KIKAKU/i)).toBeInTheDocument();
-  expect(screen.getByText(/Estate OS/i)).toBeInTheDocument();
+  expect(screen.getByText(/Jpkken-OS Elite v7/i)).toBeInTheDocument();
 });
 
 test('renders dashboard by default', () => {

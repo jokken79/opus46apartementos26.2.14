@@ -110,7 +110,8 @@ Migration rules:
 ### React patterns
 
 - Most components are functional; `ErrorBoundary` is intentionally a class component.
-- Keep `App.tsx` from growing further: extract new logic into hooks/components under `src/hooks/` and `src/components/`.
+- Keep `App.tsx` from growing further: views have been extracted into `src/components/<feature>/` (DashboardView, PropertiesView, EmployeesView, ReportsView, ImportView, SettingsView). Continue this pattern for new views.
+- Business logic is extracted into hooks under `src/hooks/` (useIndexedDB, useExcelImport, useReports, useReportExport).
 - Prefer `useCallback` for stable handlers passed deep; use `useMemo` for derived, expensive computations.
 - For async derived state (e.g., snapshots), prefer `useEffect` + `useState` (avoid `useMemo` for async).
 
@@ -149,8 +150,8 @@ When changing Excel functionality, pick one approach and keep it consistent:
 - New validation: `src/utils/validators.ts`
 - New persistence behaviors: extend `src/hooks/useIndexedDB.ts` (and/or `src/db/*` with care)
 - New reusable UI: `src/components/ui/index.tsx`
-- New feature views: `src/components/<feature>/...`
-- New business logic: `src/hooks/useFeatureName.ts`
+- New feature views: `src/components/<feature>/` (follow existing DashboardView, EmployeesView, etc.)
+- New business logic: `src/hooks/useFeatureName.ts` (follow existing useExcelImport, useReports, etc.)
 
 ## Quick sanity checklist before you hand off
 

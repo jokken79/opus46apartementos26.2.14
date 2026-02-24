@@ -1,46 +1,64 @@
-# Getting Started with Create React App
+# UNS Estate OS — Opus 4.6 Apartementos
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+> Property & apartment rental management system for **ユニバーサル企画株式会社** (UNS-Kikaku)
 
-## Available Scripts
+## Overview
 
-In the project directory, you can run:
+A single-page React application for managing rental properties, tenant assignments, employee master data, billing cycles, and financial reporting. Client-side only — no backend required. Data persists in IndexedDB via Dexie.js.
 
-### `npm start`
+## Tech Stack
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+- **React 19** + TypeScript (strict mode)
+- **Tailwind CSS 3.4** + custom glassmorphism animations
+- **Zod 3.x** for validation
+- **Dexie.js 4.3** (IndexedDB persistence)
+- **SheetJS** for Excel import/export
+- **lucide-react** icons
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+## Quick Start
 
-### `npm test`
+```bash
+npm install
+npm start          # Dev server → http://localhost:3004
+```
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+## Commands
 
-### `npm run build`
+| Command | Description |
+|---------|-------------|
+| `npm start` | Development server (port 3004) |
+| `npm test` | Run 40 tests (3 suites) |
+| `npm run build` | Production build to `/build` |
+| `npx tsc --noEmit` | TypeScript check (0 errors) |
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+## Features
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+- 🏢 **Property Management** — CRUD with capacity tracking, billing modes (split/fixed)
+- 👥 **Tenant Management** — Assignment, rent contributions, parking fees, pro-rata calculation
+- 📊 **Financial Reports** — 5 report tabs with snapshots and history comparison
+- 📁 **Excel Import/Export** — Drag-and-drop import, PDF/Excel export
+- 🔄 **Billing Cycles** — Configurable closing day (0/15/20/25)
+- 💾 **Backup/Restore** — JSON backup with data integrity validation
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+## Project Structure
 
-### `npm run eject`
+```
+src/
+├── App.tsx                     # Main routing + state (~777 lines)
+├── components/
+│   ├── ui/                     # GlassCard, Modal, NavButton, StatCard
+│   ├── dashboard/              # DashboardView
+│   ├── properties/             # PropertiesView
+│   ├── employees/              # EmployeesView
+│   ├── reports/                # ReportsView (5 tabs)
+│   ├── import/                 # ImportView (Excel drag-drop)
+│   └── settings/               # SettingsView + backup
+├── hooks/                      # useIndexedDB, useExcelImport, useReports, useReportExport
+├── types/database.ts           # Central type definitions
+├── utils/                      # Validators (Zod), propertyHelpers, constants
+└── db/                         # Dexie schema + localStorage migration
+```
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+## License
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
-
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
-
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
-
-## Learn More
-
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
-
-To learn React, check out the [React documentation](https://reactjs.org/).
+Private — ユニバーサル企画株式会社

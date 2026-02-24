@@ -13,18 +13,18 @@ export const GlassCard = ({ children, className = "", hoverEffect = true }: { ch
   </div>
 );
 
-export const StatCard = ({ title, value, subtext, icon: Icon, trend }: { title: string; value: string; subtext: string; icon: React.ComponentType<{ className?: string }>; trend?: 'up' | 'down' }) => (
+export const StatCard = ({ title, value, subtext, icon: Icon, trend, color = 'blue' }: { title: string; value: string; subtext?: string; icon: React.ComponentType<{ className?: string }>; trend?: 'up' | 'down'; color?: string }) => (
   <GlassCard hoverEffect={true} className="p-5 scanline">
     <div className="flex justify-between items-start mb-3">
-      <div className="p-2.5 bg-gradient-to-br from-gray-800 to-black rounded-xl border border-white/10 shadow-inner neon-glow-blue">
-        <Icon className="text-blue-400 w-5 h-5" />
+      <div className={`p-2.5 bg-gradient-to-br from-gray-800 to-black rounded-xl border border-white/10 shadow-inner neon-glow-${color}`}>
+        <Icon className={`text-${color}-400 w-5 h-5`} />
       </div>
       {trend && <span className={`font-hud text-[10px] font-bold px-2 py-1 rounded-full border ${trend === 'up' ? 'bg-green-500/10 text-green-400 border-green-500/30' : 'bg-red-500/10 text-red-400 border-red-500/30'}`}>{trend === 'up' ? '▲' : '▼'}</span>}
     </div>
     <div className="space-y-1">
       <h3 className="text-gray-500 text-[10px] uppercase tracking-[0.2em] font-bold font-hud">{title}</h3>
-      <div className="text-3xl font-black text-white tracking-tight leading-none font-hud text-glow-blue">{value}</div>
-      <div className="text-xs text-gray-500 font-medium">{subtext}</div>
+      <div className={`text-3xl font-black text-white tracking-tight leading-none font-hud text-glow-${color}`}>{value}</div>
+      {subtext && <div className="text-xs text-gray-500 font-medium">{subtext}</div>}
     </div>
   </GlassCard>
 );

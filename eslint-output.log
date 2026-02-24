@@ -1,0 +1,21 @@
+
+D:\Git\opus46apartementos26.2.14\src\App.tsx
+    8:10   warning  'DashboardView' is defined but never used              @typescript-eslint/no-unused-vars
+    9:10   warning  'PropertiesView' is defined but never used             @typescript-eslint/no-unused-vars
+  111:19   warning  'setImportStatus' is assigned a value but never used   @typescript-eslint/no-unused-vars
+  111:36   warning  'previewData' is assigned a value but never used       @typescript-eslint/no-unused-vars
+  111:49   warning  'detectedType' is assigned a value but never used      @typescript-eslint/no-unused-vars
+  411:9    warning  'handleDragOver' is assigned a value but never used    @typescript-eslint/no-unused-vars
+  412:9    warning  'handleDragLeave' is assigned a value but never used   @typescript-eslint/no-unused-vars
+  413:9    warning  'handleDrop' is assigned a value but never used        @typescript-eslint/no-unused-vars
+  414:9    warning  'handleFileChange' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  645:94   error    'Table2' is not defined                                react/jsx-no-undef
+  763:110  error    'Percent' is not defined                               react/jsx-no-undef
+  802:160  error    'LogOut' is not defined                                react/jsx-no-undef
+  896:105  error    'Percent' is not defined                               react/jsx-no-undef
+  938:124  error    'CalendarDays' is not defined                          react/jsx-no-undef
+  946:93   error    'CalendarDays' is not defined                          react/jsx-no-undef
+  961:196  error    'CalendarDays' is not defined                          react/jsx-no-undef
+
+笨・16 problems (7 errors, 9 warnings)
+

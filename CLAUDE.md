@@ -19,10 +19,10 @@
 | Build | Create React App (react-scripts 5.0.1) |
 | Styling | Tailwind CSS 3.4 + custom CSS animations (glassmorphism) |
 | Icons | lucide-react |
-| Validation | Zod 4 |
+| Validation | Zod 3.x |
 | Persistence | IndexedDB via Dexie.js 4.3 (DB: `UNSEstateOS`) |
 | Excel parsing | SheetJS (loaded dynamically from CDN with SRI integrity) |
-| Testing | Jest + React Testing Library (42 tests) |
+| Testing | Jest + React Testing Library (40 tests) |
 
 ## Commands
 
@@ -36,7 +36,7 @@ npm test           # Jest test runner (watch mode)
 
 ```
 src/
-├── App.tsx                          # Main app (~889 lines, routing + state + modals)
+├── App.tsx                          # Main app (~777 lines, routing + state + modals)
 ├── App.css                          # Tailwind utilities + custom animations
 ├── App.test.tsx                     # App render tests (2 tests)
 ├── index.tsx                        # React entry + ErrorBoundary wrapper
@@ -44,7 +44,13 @@ src/
 ├── components/
 │   ├── ErrorBoundary.tsx            # React class component error boundary
 │   ├── ui/
-│   │   └── index.tsx                # GlassCard, StatCard, Modal, NavButton
+│   │   └── index.tsx                # GlassCard, StatCard, Modal, NavButton, NavButtonMobile
+│   ├── dashboard/
+│   │   └── DashboardView.tsx        # Dashboard metrics + financial overview
+│   ├── properties/
+│   │   └── PropertiesView.tsx       # Property cards + filter (active/history)
+│   ├── employees/
+│   │   └── EmployeesView.tsx        # Employee master table with categories
 │   ├── settings/
 │   │   └── SettingsView.tsx         # Settings + backup + billing config
 │   ├── import/
@@ -56,6 +62,7 @@ src/
 │   └── migrate.ts                   # localStorage → IndexedDB auto-migration
 ├── hooks/
 │   ├── useIndexedDB.ts              # Core persistence hook (IndexedDB + beforeunload)
+│   ├── useExcelImport.ts            # Excel file processing hook
 │   ├── useReports.ts                # Report generation + snapshots
 │   └── useReportExport.ts           # Excel/PDF export
 ├── types/
@@ -121,7 +128,7 @@ src/
 1. All types are defined in `src/types/database.ts` — add new interfaces there, not inline.
 2. Validation schemas live in `src/utils/validators.ts` — keep in sync with type changes.
 3. Database operations go through the `useIndexedDB` hook — never write to IndexedDB directly.
-4. The main `App.tsx` is large (~889 lines); prefer extracting logic into hooks or new components under `src/components/`.
+4. The main `App.tsx` has been modularized (~777 lines); views are extracted into `src/components/<feature>/`. Continue this pattern for new views.
 5. UI primitives (GlassCard, Modal, etc.) are in `src/components/ui/` — import from there, do not duplicate inline.
 6. Use `isPropertyActive()` from `src/utils/propertyHelpers.ts` — do not write inline active-property filters.
 7. ID generation uses `generateId()` with a monotonic counter (avoids `Date.now()` collisions).
@@ -142,14 +149,14 @@ src/
 - Japanese postal codes follow `###-####` format.
 - Modal close handlers use `confirmDiscardChanges()` to warn on unsaved changes.
 - Employee ID is a string PK from Excel import — not editable.
-- Zod 4 quirks: `(z.enum as any)([...])` is required for enum types; use `z.string().length(0)` instead of `z.literal('')`.
+- Zod 3 quirks: `(z.enum as any)([...])` is used for enum types; use `z.string().length(0)` instead of `z.literal('')`.
 - Report snapshots are async — use `useState` + `useEffect`, NOT `useMemo`.
 
 ### Testing
-- **42 tests** across 3 suites:
+- **40 tests** across 3 suites:
   - `src/utils/propertyHelpers.test.ts` — 18 tests (isPropertyActive, extractArea)
   - `src/utils/validators.test.ts` — 20 tests (Zod schema validation)
-  - `src/App.test.tsx` — 2 + 2 tests (render, basic integration)
+  - `src/App.test.tsx` — 2 tests (render, basic integration)
 - Run tests with `npm test`.
 - Use React Testing Library patterns for component tests.
 

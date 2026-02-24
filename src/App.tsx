@@ -4,18 +4,21 @@ import {
   Building, Users, LayoutDashboard, Search, Database, UploadCloud, PlusCircle, X,
   AlertCircle, Calculator, DollarSign, UserPlus, Calendar, Check,
   Trash2, User, History, MapPin, Edit2, Map, Hash, Loader2, Bell,
-  TrendingUp, Settings, CalendarDays, Percent, LogOut, Table2, FileText
+  Settings, CalendarDays, Percent, LogOut, Table2, FileText, TrendingUp
 } from 'lucide-react';
+import { DashboardView } from './components/dashboard/DashboardView';
+import { PropertiesView } from './components/properties/PropertiesView';
+import { EmployeesView } from './components/employees/EmployeesView';
 import { ReportsView } from './components/reports/ReportsView';
 import { GlassCard, StatCard, Modal, NavButton, NavButtonMobile } from './components/ui';
 import { SettingsView } from './components/settings/SettingsView';
 import { ImportView } from './components/import/ImportView';
 import { useIndexedDB } from './hooks/useIndexedDB';
+import { useExcelImport } from './hooks/useExcelImport';
 import type { Property, Tenant, Employee, AppDatabase, AlertItem } from './types/database';
 import { validateBackup, validateProperty, validateTenant } from './utils/validators';
 import { isPropertyActive } from './utils/propertyHelpers';
 import { COMPANY_INFO } from './utils/constants';
-import * as XLSX from 'xlsx';
 
 // --- ID Generator (monotónico, sin colisiones) ---
 let _lastId = 0;
@@ -105,13 +108,13 @@ export default function App() {
   // IndexedDB (Dexie) — reemplaza localStorage
   const { db, setDb, isLoading: isDbLoading, resetDb } = useIndexedDB();
 
+  // --- HOOK DE IMPORTACIÓN EXCEL ---
+  const {
+    importStatus, previewSummary,
+    processExcelFile, saveToDatabase
+  } = useExcelImport(db, setDb, generateId, setActiveTab);
+
   // --- ESTADOS ---
-  const [isDragging, setIsDragging] = useState(false);
-  const [importStatus, setImportStatus] = useState({ type: '', msg: '' });
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const [previewData, setPreviewData] = useState<any>([]);
-  const [detectedType, setDetectedType] = useState<string | null>(null);
-  const [previewSummary, setPreviewSummary] = useState('');
   const [isSearchingAddress, setIsSearchingAddress] = useState(false);
   const [addressSearchError, setAddressSearchError] = useState('');
 
@@ -405,165 +408,7 @@ export default function App() {
     });
   };
 
-  // --- IMPORT ---
-  const processExcelFile = (file: File) => {
-    setImportStatus({ type: 'loading', msg: '' }); setPreviewData([]); setDetectedType(null);
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const wb = XLSX.read(new Uint8Array(e.target?.result as ArrayBuffer), { type: 'array' });
-        const sn: string[] = wb.SheetNames;
-        const empSheets = sn.filter((n: string) => {
-          const name = n.toLowerCase();
-          return name.includes('genzai') || name.includes('ukeoi') || name.includes('台帳') ||
-            name.includes('employee') || name.includes('staff') || name.includes('名簿') ||
-            name.includes('一覧') || name.includes('member');
-        });
-        const prop = sn.find((n: string) => n.includes('会社寮情報'));
-        const ten = sn.find((n: string) => n.includes('入居者一覧'));
 
-        if (empSheets.length > 0) {
-          let mergedData: any[] = [];
-          empSheets.forEach(sheetName => {
-            const sheetData: any[] = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval: "" });
-            // Guardar el nombre de la hoja para lógica de asignación
-            const dataWithSheet = sheetData.map(row => ({ ...row, _sheet: sheetName }));
-            mergedData = [...mergedData, ...dataWithSheet];
-          });
-          setPreviewData(mergedData);
-          setDetectedType('employees');
-          setPreviewSummary(`社員台帳: ${mergedData.length} empleados detectados en ${empSheets.length} hojas (${empSheets.join(', ')}).`);
-          setImportStatus({ type: 'success', msg: 'OK' });
-        } else if (sn.length === 1 && !prop && !ten) {
-          // Fallback: si solo hay una hoja y no es de renta, asumimos que son empleados
-          const d: any[] = XLSX.utils.sheet_to_json(wb.Sheets[sn[0]], { defval: "" });
-          const dataWithSheet = d.map(row => ({ ...row, _sheet: sn[0] }));
-          setPreviewData(dataWithSheet);
-          setDetectedType('employees');
-          setPreviewSummary(`社員台帳 (Hoja única: ${sn[0]}): ${d.length} empleados detectados.`);
-          setImportStatus({ type: 'success', msg: 'OK' });
-        }
-        else if (prop || ten) {
-          const c: any = { properties: [], tenants: [] }; let t = 'Gestión de Renta:\n';
-          if (prop) { const p = XLSX.utils.sheet_to_json(wb.Sheets[prop], { defval: "" }); c.properties = p; t += `- ${p.length} Propiedades\n`; }
-          if (ten) { const tt = XLSX.utils.sheet_to_json(wb.Sheets[ten], { defval: "" }); c.tenants = tt; t += `- ${tt.length} Inquilinos`; }
-          setPreviewData(c); setDetectedType('rent_management'); setPreviewSummary(t); setImportStatus({ type: 'success', msg: 'OK' });
-        } else setImportStatus({ type: 'error', msg: 'Formato no reconocido.' });
-      } catch { setImportStatus({ type: 'error', msg: 'Error de lectura.' }); }
-    }; reader.readAsArrayBuffer(file);
-  };
-
-  const saveToDatabase = () => {
-    const newDb: AppDatabase = JSON.parse(JSON.stringify(db)); let tab = 'dashboard';
-    if (detectedType === 'employees') {
-      let countGenzai = 0, countUkeoi = 0, countStaff = 0;
-
-      previewData.forEach((r: any) => {
-        const keys = Object.keys(r);
-        if (keys.length === 0) return;
-
-        const sourceSheet = String(r._sheet || '').toLowerCase();
-
-        // ============================================================
-        // LÓGICA ESPECÍFICA POR TIPO DE HOJA
-        // ============================================================
-        let employeeId = '';
-        let employeeName = '';
-        let employeeKana = '';
-        let employeeCompany = '';
-        let targetTable: 'genzai' | 'ukeoi' | 'staff' | 'legacy' = 'legacy';
-
-        if (sourceSheet.includes('genzai')) {
-          // DBGenzaiX: ID en columna B (社員№), 派遣先 en columna D, Nombre en columna H
-          employeeId = String(r['社員№'] || r['社員No'] || r['社員no'] || '').trim();
-          employeeName = String(r['氏名'] || '').trim();
-          employeeKana = String(r['カナ'] || r['氏名カナ'] || '').trim();
-          // 派遣先 está explícitamente en una columna llamada 派遣先
-          employeeCompany = String(r['派遣先'] || '').trim();
-          targetTable = 'genzai';
-
-        } else if (sourceSheet.includes('ukeoi')) {
-          // DBUkeoiX: ID en columna B (社員№), NO hay 派遣先 → siempre "岡山"
-          employeeId = String(r['社員№'] || r['社員No'] || r['社員no'] || '').trim();
-          employeeName = String(r['氏名'] || '').trim();
-          employeeKana = String(r['カナ'] || r['氏名カナ'] || '').trim();
-          employeeCompany = '岡山'; // Valor fijo para Ukeoi
-          targetTable = 'ukeoi';
-
-        } else if (sourceSheet.includes('staff')) {
-          // DBStaffX: ID en columna B (社員№), siempre "事務所" (trabajan en oficina)
-          employeeId = String(r['社員№'] || r['社員No'] || r['社員no'] || '').trim();
-          employeeName = String(r['氏名'] || '').trim();
-          employeeKana = String(r['カナ'] || r['氏名カナ'] || '').trim();
-          employeeCompany = '事務所'; // Valor fijo para Staff
-          targetTable = 'staff';
-
-        } else {
-          // FALLBACK: Detección genérica para otras hojas
-          const findKey = (candidates: string[]) => {
-            return keys.find(k => {
-              const normalized = k.trim().toLowerCase().replace(/\s/g, '');
-              return candidates.some(c => normalized === c || normalized.includes(c));
-            });
-          };
-
-          const idKey = findKey(['社員no', '社員ｎｏ', '社員番号', '社員コード', '社員ｺｰﾄﾞ', 'id', 'no', 'no.', 'コード', 'ｺｰﾄﾞ', 'empid', 'staffid', '番号']) || keys[0];
-          const nameKey = findKey(['氏名', '名前', 'name', 'fullname', 'staffname', '氏名漢', '名称']) || (keys[1] || keys[0]);
-          const kanaKey = findKey(['カナ', 'かな', 'kana', '氏名カナ', 'ﾌﾘｶﾞﾅ', 'フリガナ']);
-          const companyKey = findKey(['派遣先', 'company', 'workplace', '所属', '部署']);
-
-          employeeId = String(r[idKey] || '').trim();
-          employeeName = String(r[nameKey] || '').trim();
-          employeeKana = String(kanaKey ? r[kanaKey] : '').trim();
-          employeeCompany = String(companyKey ? r[companyKey] : '').trim();
-          targetTable = 'legacy';
-        }
-
-        // Skip si no hay ID ni nombre válido
-        if (!employeeId && !employeeName) return;
-
-        const emp: Employee = {
-          id: employeeId || 'N/A',
-          name: employeeName || 'Sin Nombre',
-          name_kana: employeeKana,
-          company: employeeCompany,
-          full_data: r
-        };
-
-        // Guardar en la tabla correspondiente
-        if (targetTable === 'genzai') {
-          const i = newDb.employeesGenzai.findIndex(e => e.id === emp.id);
-          if (i >= 0) newDb.employeesGenzai[i] = emp;
-          else newDb.employeesGenzai.push(emp);
-          countGenzai++;
-        } else if (targetTable === 'ukeoi') {
-          const i = newDb.employeesUkeoi.findIndex(e => e.id === emp.id);
-          if (i >= 0) newDb.employeesUkeoi[i] = emp;
-          else newDb.employeesUkeoi.push(emp);
-          countUkeoi++;
-        } else if (targetTable === 'staff') {
-          const i = newDb.employeesStaff.findIndex(e => e.id === emp.id);
-          if (i >= 0) newDb.employeesStaff[i] = emp;
-          else newDb.employeesStaff.push(emp);
-          countStaff++;
-        } else {
-          // Legacy fallback
-          const i = newDb.employees.findIndex(e => e.id === emp.id);
-          if (i >= 0) newDb.employees[i] = emp;
-          else newDb.employees.push(emp);
-        }
-      });
-
-      console.log(`[Import] Genzai: ${countGenzai}, Ukeoi: ${countUkeoi}, Staff: ${countStaff}`);
-      tab = 'employees';
-    } else if (detectedType === 'rent_management') {
-      const { properties, tenants } = previewData;
-      properties.forEach((r: any) => { const n = r['ｱﾊﾟｰﾄ'] || r['物件名']; if (!n) return; const ex = newDb.properties.find(p => p.name === n); const pid = ex ? ex.id : generateId(); const o: Property = { id: pid, name: String(n).trim(), address: String(r['住所'] || '').trim(), capacity: parseInt(r['入居人数'] || 2) || 2, rent_cost: parseInt(r['家賃'] || 0), rent_price_uns: parseInt(r['USN家賃'] || 0), parking_cost: parseInt(r['駐車場代'] || 0), parking_capacity: 1 }; if (ex) Object.assign(ex, o); else newDb.properties.push(o); });
-      tenants.forEach((r: any, idx: number) => { const apt = r['ｱﾊﾟｰﾄ']; const kana = r['カナ']; if (!apt || !kana) return; const pr = newDb.properties.find(p => p.name === apt); if (!pr) return; if (!newDb.tenants.find(t => t.name_kana === kana && t.property_id === pr.id)) newDb.tenants.push({ id: generateId(), employee_id: `IMP-${idx}`, name: kana, name_kana: kana, property_id: pr.id, rent_contribution: parseInt(r['家賃'] || 0), parking_fee: parseInt(r['駐車場'] || 0), entry_date: r['入居'] || new Date().toISOString().split('T')[0], status: 'active' }); });
-      tab = 'properties';
-    }
-    setDb(newDb); setPreviewData([]); setDetectedType(null); setImportStatus({ type: '', msg: '' }); setActiveTab(tab);
-  };
 
   // --- RENDER ---
   if (isDbLoading) {
@@ -681,205 +526,63 @@ export default function App() {
 
           {/* ====== PROPIEDADES ====== */}
           {activeTab === 'properties' && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
-              <div className="flex flex-col md:flex-row justify-between items-center gap-4 bg-[#15171c] p-2 rounded-2xl border border-white/5">
-                <div className="flex gap-1 bg-black/40 p-1 rounded-xl w-full md:w-auto">
-                  <button onClick={() => setPropertyViewMode('active')} className={`flex-1 md:flex-none px-6 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all ${propertyViewMode === 'active' ? 'bg-[#20242c] text-white shadow-lg border border-white/10' : 'text-gray-500 hover:text-white'}`}><Building className="w-4 h-4" /> Activos</button>
-                  <button onClick={() => setPropertyViewMode('history')} className={`flex-1 md:flex-none px-6 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2 transition-all ${propertyViewMode === 'history' ? 'bg-[#20242c] text-white shadow-lg border border-white/10' : 'text-gray-500 hover:text-white'}`}><History className="w-4 h-4" /> Historial</button>
-                </div>
-                <div className="flex gap-2 w-full md:w-auto">
-                  {uniqueCompanies.length > 0 && (
-                    <select value={companyFilter} onChange={e => setCompanyFilter(e.target.value)} className="bg-black/60 border border-white/10 text-sm text-white rounded-xl px-3 py-2.5 outline-none focus:border-cyan-500 transition appearance-none cursor-pointer">
-                      <option value="">全派遣先 (Todas)</option>
-                      {uniqueCompanies.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  )}
-                  <button onClick={() => { const f = { id: null, name: '', room_number: '', postal_code: '', address_auto: '', address_detail: '', manager_name: '', manager_phone: '', contract_start: new Date().toISOString().split('T')[0], contract_end: '', type: '1K', capacity: 2, rent_cost: 0, rent_price_uns: 0, parking_cost: 0, parking_capacity: 0, kanri_hi: 0, billing_mode: 'fixed' as const }; setPropertyForm(f); propertyFormSnapshot.current = JSON.stringify(f); setIsPropertyModalOpen(true); }} className="w-full md:w-auto bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-xl text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20"><PlusCircle className="w-4 h-4" /> Nueva Propiedad</button>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-                {(propertyViewMode === 'active' ? filteredProperties.filter(isPropertyActive) : filteredProperties.filter(p => !isPropertyActive(p))).map(p => {
-                  const ts = db.tenants.filter(t => t.property_id === p.id && t.status === 'active');
-                  const totalIn = ts.reduce((s, t) => s + (t.rent_contribution || 0) + (t.parking_fee || 0), 0);
-                  const vac = (p.capacity || 0) - ts.length;
-                  const parkingUsed = db.tenants.filter(t => t.property_id === p.id && t.status === 'active' && (t.parking_fee || 0) > 0).length;
-                  const totalCost = (p.rent_cost || 0) + (p.kanri_hi || 0) + (p.parking_cost || 0);
-                  return (
-                    <GlassCard key={p.id} className="flex flex-col justify-between p-5 min-h-[320px]">
-                      <div>
-                        <div className="flex justify-between items-start mb-3">
-                          <h3 className="font-black text-xl text-white truncate pr-2 flex flex-col leading-none">{p.name}{p.room_number && <span className="text-blue-400 font-mono text-base mt-1">#{p.room_number}</span>}</h3>
-                          <div className="flex flex-col items-end gap-1">
-                            <span className={`shrink-0 px-2 py-0.5 rounded text-[10px] font-black border ${vac < 0 ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' : vac === 0 ? 'bg-red-500/10 text-red-400 border-red-500/20' : 'bg-green-500/10 text-green-400 border-green-500/20'}`}>{vac < 0 ? 'EXCESO' : vac === 0 ? 'LLENO' : `${vac} LIBRES`}</span>
-                            <span className={`shrink-0 px-2 py-0.5 rounded text-[9px] font-bold border ${p.billing_mode === 'split' ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' : 'bg-cyan-500/10 text-cyan-400 border-cyan-500/20'}`}>{p.billing_mode === 'split' ? '均等割り' : '個別設定'}</span>
-                          </div>
-                        </div>
-                        <div className="space-y-2 mb-4 text-xs">
-                          <div className="flex justify-between border-b border-white/5 pb-1"><span className="text-gray-500">家賃 (不動産屋)</span><span className="text-white font-mono">¥{(p.rent_cost || 0).toLocaleString()}</span></div>
-                          {(p.kanri_hi || 0) > 0 && <div className="flex justify-between border-b border-white/5 pb-1"><span className="text-gray-500">管理費</span><span className="text-white font-mono">¥{(p.kanri_hi || 0).toLocaleString()}</span></div>}
-                          <div className="flex justify-between border-b border-white/5 pb-1">
-                            <span className="text-gray-500">Estacionamiento</span>
-                            <div className="flex items-center gap-2">
-                              {p.parking_capacity > 0 ? (
-                                <>
-                                  <span className={`text-[9px] px-1.5 py-0.5 rounded font-black ${parkingUsed >= p.parking_capacity ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>{parkingUsed}/{p.parking_capacity}</span>
-                                  <span className="text-blue-400 font-mono">¥{(p.parking_cost || 0).toLocaleString()}</span>
-                                </>
-                              ) : (
-                                <span className="text-gray-600 italic">No disponible</span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex justify-between border-b border-white/5 pb-1"><span className="text-gray-500 font-bold">合計コスト</span><span className="text-red-400 font-mono font-bold">¥{totalCost.toLocaleString()}</span></div>
-                          <div className="flex justify-between border-b border-white/5 pb-1"><span className="text-gray-500">Objetivo UNS</span><span className="text-blue-500 font-mono font-bold">¥{(p.rent_price_uns || 0).toLocaleString()}</span></div>
-                          <div className="flex justify-between pt-1"><span className="text-gray-400 font-bold uppercase">Recaudado</span><span className={`text-lg font-black font-mono ${totalIn >= (p.rent_price_uns || 0) ? 'text-green-400' : 'text-orange-400'}`}>¥{totalIn.toLocaleString()}</span></div>
-                        </div>
-                        {ts.length > 0 && <div className="mb-3 space-y-1.5">{ts.map(t => (<div key={t.id} className="flex items-center gap-2 text-[10px] text-gray-400"><User className="w-3 h-3 text-blue-500 shrink-0" /><div className="flex flex-col min-w-0 flex-1"><span className="truncate text-gray-300">{t.name}</span>{t.company && <span className="truncate text-[9px] text-cyan-500/70">派遣先: {t.company}</span>}</div><span className="text-gray-600 font-mono shrink-0">¥{t.rent_contribution.toLocaleString()}</span></div>))}</div>}
-                        {(() => { const past = db.tenants.filter(t => t.property_id === p.id && t.status === 'inactive'); return past.length > 0 ? <div className="mb-3 flex items-center gap-1.5 text-[10px] text-orange-400/60"><History className="w-3 h-3" /><span>{past.length} inquilino{past.length > 1 ? 's' : ''} anterior{past.length > 1 ? 'es' : ''}</span></div> : null; })()}
-                        <div className="space-y-1 opacity-60 hover:opacity-100 transition-opacity mb-3"><p className="text-gray-400 text-[10px] flex gap-1 truncate items-center"><MapPin className="w-3 h-3 text-gray-600" /> {p.address}</p></div>
-                      </div>
-                      <div className="flex gap-2 mt-auto">
-                        <button onClick={() => { const f = { ...p, kanri_hi: p.kanri_hi || 0, billing_mode: p.billing_mode || 'fixed', parking_capacity: p.parking_capacity || 0 }; setPropertyForm(f); propertyFormSnapshot.current = JSON.stringify(f); setIsPropertyModalOpen(true); }} className="bg-black/40 hover:bg-black/60 text-gray-300 p-2.5 rounded-lg border border-white/10 transition"><Edit2 className="w-4 h-4" /></button>
-                        <button onClick={() => handleDeleteProperty(p.id)} className="bg-black/40 hover:bg-red-900/40 text-gray-500 hover:text-red-400 p-2.5 rounded-lg border border-white/10 hover:border-red-500/30 transition" title="Eliminar propiedad"><Trash2 className="w-4 h-4" /></button>
-                        {propertyViewMode === 'active' && <button onClick={() => openRentManager(p)} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold uppercase tracking-wider py-2.5 rounded-lg shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 transition"><DollarSign className="w-4 h-4" /> Gestión</button>}
-                      </div>
-                    </GlassCard>
-                  );
-                })}
-                {(propertyViewMode === 'active' ? filteredProperties.filter(isPropertyActive) : filteredProperties.filter(p => !isPropertyActive(p))).length === 0 && (
-                  <div className="col-span-full flex flex-col items-center justify-center py-16 text-center">
-                    <Building className="w-12 h-12 text-gray-700 mb-4" />
-                    <p className="text-gray-500 text-sm font-bold">{companyFilter ? `Sin propiedades para 派遣先: ${companyFilter}` : searchTerm ? 'Sin resultados para la búsqueda' : propertyViewMode === 'history' ? 'Sin propiedades en historial' : 'Sin propiedades registradas'}</p>
-                    {companyFilter && <button onClick={() => setCompanyFilter('')} className="mt-3 text-blue-400 text-xs hover:underline">Limpiar filtro</button>}
-                  </div>
-                )}
-              </div>
-            </div>
+            <PropertiesView
+              db={db}
+              searchTerm={searchTerm}
+              onEdit={(p) => {
+                const f = { ...p, kanri_hi: p.kanri_hi || 0, billing_mode: p.billing_mode || 'fixed', parking_capacity: p.parking_capacity || 0 };
+                setPropertyForm(f);
+                propertyFormSnapshot.current = JSON.stringify(f);
+                setIsPropertyModalOpen(true);
+              }}
+              onDelete={handleDeleteProperty}
+              onManageTenants={openRentManager}
+              setIsSearchingAddress={setIsSearchingAddress}
+            />
           )}
 
           {/* ====== EMPLEADOS (社員台帳) ====== */}
           {activeTab === 'employees' && (
-            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-20">
-              <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                <div>
-                  <h2 className="text-3xl font-black text-white">社員台帳</h2>
-                  <p className="text-gray-500 text-sm">
-                    派遣: {db.employeesGenzai.length} | 請負: {db.employeesUkeoi.length} | 事務所: {db.employeesStaff.length}
-                  </p>
-                </div>
-                <button onClick={() => setActiveTab('import')} className="bg-green-600 hover:bg-green-500 text-white px-6 py-2.5 rounded-xl text-sm font-bold flex items-center gap-2 shadow-lg shadow-green-500/20"><UploadCloud className="w-4 h-4" /> Importar 社員台帳</button>
-              </div>
-
-              {/* Tabs para categorías de empleados */}
-              <div className="flex gap-2 bg-[#15171c] p-1.5 rounded-xl border border-white/10 w-fit">
-                <button
-                  onClick={() => { setEmpCategory('genzai'); setEmpPage(1); }}
-                  className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${empCategory === 'genzai' ? 'bg-blue-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
-                >
-                  派遣 <span className="text-xs opacity-70">({db.employeesGenzai.length})</span>
-                </button>
-                <button
-                  onClick={() => { setEmpCategory('ukeoi'); setEmpPage(1); }}
-                  className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${empCategory === 'ukeoi' ? 'bg-orange-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
-                >
-                  請負 岡山 <span className="text-xs opacity-70">({db.employeesUkeoi.length})</span>
-                </button>
-                <button
-                  onClick={() => { setEmpCategory('staff'); setEmpPage(1); }}
-                  className={`px-4 py-2 rounded-lg text-sm font-bold transition-all ${empCategory === 'staff' ? 'bg-purple-600 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
-                >
-                  事務所 <span className="text-xs opacity-70">({db.employeesStaff.length})</span>
-                </button>
-              </div>
-
-              {filteredEmployees.length === 0 && (db.employeesGenzai.length + db.employeesUkeoi.length + db.employeesStaff.length) === 0 ? (
-                <div className="flex flex-col items-center justify-center py-20 text-center">
-                  <div className="bg-gray-900 p-6 rounded-full mb-6 border border-gray-800"><Table2 className="w-12 h-12 text-gray-600" /></div>
-                  <h3 className="text-2xl font-bold text-white mb-2">Sin empleados</h3>
-                  <p className="text-gray-500 max-w-md mb-6">Importa tu archivo Excel de 社員台帳 para cargar todos los empleados.</p>
-                  <button onClick={() => setActiveTab('import')} className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-3 rounded-xl font-bold flex items-center gap-2"><UploadCloud className="w-5 h-5" /> Ir a Importar</button>
-                </div>
-              ) : (
-                <>
-                  <div className="flex flex-col md:flex-row gap-3">
-                    <div className="flex items-center bg-[#15171c] border border-white/10 rounded-xl px-4 py-3 focus-within:border-blue-500/50 transition-all flex-1">
-                      <Search className="w-4 h-4 text-gray-500" />
-                      <input type="text" placeholder="Buscar por ID, nombre, カナ, empresa..." className="bg-transparent border-none outline-none text-sm text-white w-full ml-3 placeholder-gray-600" value={empSearch} onChange={e => { setEmpSearch(e.target.value); setEmpPage(1); }} />
-                      {empSearch && <button onClick={() => setEmpSearch('')} className="text-gray-500 hover:text-white"><X className="w-4 h-4" /></button>}
-                    </div>
-                    <button
-                      onClick={() => { setEmpOnlyZaishoku(v => !v); setEmpPage(1); }}
-                      title="Filtra por columna 在職中/退職日 si existe en el Excel."
-                      className={`px-4 py-3 rounded-xl border text-xs font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${
-                        empOnlyZaishoku
-                          ? 'bg-green-500/15 border-green-500/30 text-green-300 shadow-lg shadow-green-500/10'
-                          : 'bg-[#15171c] border-white/10 text-gray-400 hover:text-white hover:bg-white/5'
-                      }`}
-                    >
-                      在職中のみ
-                      <span className={`text-[10px] font-mono normal-case tracking-normal ${empOnlyZaishoku ? 'text-green-400/80' : 'text-gray-600'}`}>
-                        (solo activos)
-                      </span>
-                    </button>
-                  </div>
-                  <GlassCard hoverEffect={false} className="overflow-hidden">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead><tr className="border-b border-white/10 bg-black/30">
-                          <th className="text-left p-4 text-[10px] text-gray-500 uppercase font-bold">社員No</th>
-                          <th className="text-left p-4 text-[10px] text-gray-500 uppercase font-bold">氏名</th>
-                          <th className="text-left p-4 text-[10px] text-gray-500 uppercase font-bold hidden md:table-cell">カナ</th>
-                          <th className="text-left p-4 text-[10px] text-gray-500 uppercase font-bold hidden md:table-cell">派遣先</th>
-                          <th className="text-left p-4 text-[10px] text-gray-500 uppercase font-bold">Estado</th>
-                          <th className="text-right p-4 text-[10px] text-gray-500 uppercase font-bold">Acciones</th>
-                        </tr></thead>
-                        <tbody>
-                          {filteredEmployees.slice((empPage - 1) * EMP_PER_PAGE, empPage * EMP_PER_PAGE).map(emp => {
-                            const isAssigned = db.tenants.some(t => t.employee_id === emp.id && t.status === 'active');
-                            const assignedProp = isAssigned ? db.properties.find(p => p.id === db.tenants.find(t => t.employee_id === emp.id && t.status === 'active')?.property_id) : null;
-                            return (
-                              <tr key={emp.id} className="border-b border-white/5 hover:bg-white/5 transition">
-                                <td className="p-4 font-mono text-blue-400 font-bold">{emp.id}</td>
-                                <td className="p-4 text-white font-medium">{emp.name}</td>
-                                <td className="p-4 text-gray-400 hidden md:table-cell">{emp.name_kana}</td>
-                                <td className="p-4 text-gray-400 hidden md:table-cell">{emp.company}</td>
-                                <td className="p-4">{isAssigned ? <span className="text-[10px] bg-green-500/10 text-green-400 border border-green-500/20 px-2 py-1 rounded font-bold flex items-center gap-1 w-fit"><Building className="w-3 h-3" />{assignedProp?.name}</span> : <span className="text-[10px] text-gray-500">Disponible</span>}</td>
-                                <td className="p-4 text-right">
-                                  <div className="flex items-center justify-end gap-1">
-                                    <button onClick={() => { const e = { ...emp }; setEditingEmployee(e); employeeSnapshot.current = JSON.stringify(e); }} className="text-gray-600 hover:text-blue-400 p-1.5 rounded transition" title="Editar"><Edit2 className="w-3.5 h-3.5" /></button>
-                                    <button onClick={() => handleDeleteEmployee(emp.id)} className="text-gray-600 hover:text-red-400 p-1.5 rounded transition" title="Eliminar"><Trash2 className="w-3.5 h-3.5" /></button>
-                                  </div>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                    {filteredEmployees.length > EMP_PER_PAGE && (
-                      <div className="p-4 flex items-center justify-between border-t border-white/5">
-                        <span className="text-xs text-gray-500">{(empPage - 1) * EMP_PER_PAGE + 1}–{Math.min(empPage * EMP_PER_PAGE, filteredEmployees.length)} de {filteredEmployees.length}</span>
-                        <div className="flex gap-2">
-                          <button onClick={() => setEmpPage(p => Math.max(1, p - 1))} disabled={empPage <= 1} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-gray-800 text-gray-400 border border-white/10 disabled:opacity-30 hover:bg-gray-700 transition">← Ant</button>
-                          <span className="px-3 py-1.5 text-xs text-white font-mono">{empPage}/{Math.ceil(filteredEmployees.length / EMP_PER_PAGE)}</span>
-                          <button onClick={() => setEmpPage(p => Math.min(Math.ceil(filteredEmployees.length / EMP_PER_PAGE), p + 1))} disabled={empPage >= Math.ceil(filteredEmployees.length / EMP_PER_PAGE)} className="px-3 py-1.5 rounded-lg text-xs font-bold bg-gray-800 text-gray-400 border border-white/10 disabled:opacity-30 hover:bg-gray-700 transition">Sig →</button>
-                        </div>
-                      </div>
-                    )}
-                  </GlassCard>
-                </>
-              )}
-            </div>
+            <EmployeesView db={db} searchTerm={searchTerm} />
           )}
 
-          {/* ====== REPORTES ====== */}
-          {activeTab === 'reports' && <ReportsView db={db} cycle={cycle} onUpdateTenant={(tid, field, val) => { const v = parseInt(val) || 0; setDb(prev => ({ ...prev, tenants: prev.tenants.map(t => t.id === tid ? { ...t, [field]: v } : t) })); }} onRemoveTenant={(tid) => { const tenant = db.tenants.find(t => t.id === tid); if (!tenant) return; const fee = db.config.defaultCleaningFee || 30000; if (!window.confirm(`¿Dar de baja a ${tenant.name}?\n\nクリーニング費: ¥${fee.toLocaleString()}`)) return; setDb(prev => { const updated = { ...prev, tenants: prev.tenants.map(t => t.id === tid ? { ...t, status: 'inactive' as const, exit_date: new Date().toISOString().split('T')[0], cleaning_fee: fee } : t) }; return autoSplitRent(updated, tenant.property_id); }); }} onAddTenant={(tenantData) => { if (db.tenants.find(t => t.employee_id === tenantData.employee_id && t.status === 'active')) { alert('Este 社員No ya está asignado.'); return; } const newT: Tenant = { ...tenantData, id: generateId(), status: 'active' }; setDb(prev => { const updated = { ...prev, tenants: [...prev.tenants, newT] }; return autoSplitRent(updated, tenantData.property_id); }); }} onDeleteTenant={(tid) => { if (!window.confirm('¿Eliminar registro permanentemente?')) return; setDb(prev => ({ ...prev, tenants: prev.tenants.filter(t => t.id !== tid) })); }} />}
+          {/* REPORTS TAB */}
+          {activeTab === 'reports' && (
+            <ReportsView
+              db={db}
+              cycle={cycle}
+              onUpdateTenant={(tid, field, val) => { const v = parseInt(val) || 0; setDb(prev => ({ ...prev, tenants: prev.tenants.map(t => t.id === tid ? { ...t, [field]: v } : t) })); }}
+              onRemoveTenant={(tid) => { const tenant = db.tenants.find(t => t.id === tid); if (!tenant) return; const fee = db.config?.defaultCleaningFee || 30000; if (!window.confirm(`¿Dar de baja a ${tenant.name}?\n\nクリーニング費: ¥${fee.toLocaleString()}`)) return; setDb(prev => { const updated = { ...prev, tenants: prev.tenants.map(t => t.id === tid ? { ...t, status: 'inactive' as const, exit_date: new Date().toISOString().split('T')[0], cleaning_fee: fee } : t) }; return autoSplitRent(updated, tenant.property_id); }); }}
+              onAddTenant={(tenantData) => { if (db.tenants.find(t => t.employee_id === tenantData.employee_id && t.status === 'active')) { alert('Este 社員No ya está asignado.'); return; } const newT: Tenant = { ...tenantData, id: generateId(), status: 'active' }; setDb(prev => { const updated = { ...prev, tenants: [...prev.tenants, newT] }; return autoSplitRent(updated, tenantData.property_id); }); }}
+              onDeleteTenant={(tid) => { if (!window.confirm('¿Eliminar registro permanentemente?')) return; setDb(prev => ({ ...prev, tenants: prev.tenants.filter(t => t.id !== tid) })); }}
+            />
+          )}
 
-          {/* ====== IMPORT ====== */}
-          {activeTab === 'import' && <ImportView isDragging={isDragging} importStatus={importStatus} previewSummary={previewSummary} onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }} onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }} onDrop={(e) => { e.preventDefault(); setIsDragging(false); if (e.dataTransfer.files.length) processExcelFile(e.dataTransfer.files[0]); }} onFileChange={(e) => e.target.files?.length && processExcelFile(e.target.files[0])} onSave={saveToDatabase} />}
+          {/* IMPORT/EXPORT TAB */}
+          {activeTab === 'import' && (
+            <ImportView
+              isDragging={false}
+              importStatus={importStatus}
+              previewSummary={previewSummary}
+              onDragOver={(e) => e.preventDefault()}
+              onDragLeave={(e) => e.preventDefault()}
+              onDrop={(e) => { e.preventDefault(); if (e.dataTransfer.files.length) processExcelFile(e.dataTransfer.files[0]); }}
+              onFileChange={(e) => e.target.files?.length && processExcelFile(e.target.files[0])}
+              onSave={saveToDatabase}
+            />
+          )}
 
-          {/* ====== SETTINGS ====== */}
-          {activeTab === 'settings' && <SettingsView db={db} setDb={setDb} onDownloadBackup={downloadBackup} onRestoreBackup={restoreBackup} onReset={() => { if (window.confirm('¿Borrar todo?')) resetDb(); }} />}
+          {/* SETTINGS TAB */}
+          {activeTab === 'settings' && (
+            <SettingsView
+              db={db}
+              setDb={setDb}
+              onDownloadBackup={downloadBackup}
+              onRestoreBackup={restoreBackup}
+              onReset={() => { if (window.confirm('¿Borrar todo?')) resetDb(); }}
+            />
+          )}
+
         </main>
       </div>
 
@@ -933,7 +636,7 @@ export default function App() {
                   <div className="col-span-4">Inquilino</div>
                   <div className="col-span-2 text-center">Entrada</div>
                   <div className="col-span-2 text-right">Renta (¥)</div>
-                  <div className="col-span-2 text-right">日割り</div>
+                  <div className="col-span-2 text-center">日割り</div>
                   <div className="col-span-2 text-right pr-2">Parking</div>
                 </div>
                 <div className="p-2 space-y-2">
@@ -1067,78 +770,6 @@ export default function App() {
             <button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-500/20 transition hover:-translate-y-1">Guardar</button>
           </div>
         </form>
-      </Modal>
-
-      {/* ====== MODAL: ADD TENANT ====== */}
-      <Modal isOpen={isAddTenantModalOpen} onClose={() => { if (!confirmDiscardChanges(JSON.stringify(tenantForm), tenantFormSnapshot.current)) return; setTenantForm({ ...EMPTY_TENANT_FORM }); setIsIdFound(false); setIsAddTenantModalOpen(false); }} title="Registrar Inquilino">
-        <form onSubmit={handleAddTenant} className="space-y-6">
-          <div className="bg-gray-800/50 p-6 rounded-2xl border border-white/5">
-            <label className="text-xs text-blue-500 font-bold block mb-2 uppercase tracking-wide">Paso 1: 社員No (ID Empleado)</label>
-            <div className="relative">
-              <input type="text" required autoFocus placeholder="Escribe el ID del empleado..." className="w-full bg-black border border-gray-700 p-4 rounded-xl text-white text-xl font-mono focus:border-blue-500 outline-none transition pl-12" value={tenantForm.employee_id} onChange={e => setTenantForm({ ...tenantForm, employee_id: e.target.value })} />
-              <div className="absolute left-4 top-4 text-gray-500"><User className="w-6 h-6" /></div>
-              {isIdFound && <div className="absolute right-4 top-4 text-green-500 animate-in zoom-in"><Check className="w-6 h-6" /></div>}
-            </div>
-            {isIdFound && <div className="mt-2 space-y-1"><p className="text-green-400 text-xs font-medium flex items-center gap-1"><Database className="w-3 h-3" /> Empleado encontrado.</p>{tenantForm.company && <p className="text-cyan-400 text-xs flex items-center gap-1"><Building className="w-3 h-3" /> 派遣先: {tenantForm.company}</p>}</div>}
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div><label className="text-xs text-gray-400 block mb-1">Nombre</label><input className="w-full bg-gray-800 border border-gray-700 p-3 rounded-xl text-white" value={tenantForm.name} onChange={e => setTenantForm({ ...tenantForm, name: e.target.value })} required /></div>
-            <div><label className="text-xs text-gray-400 block mb-1">カナ</label><input className="w-full bg-gray-800 border border-gray-700 p-3 rounded-xl text-white" value={tenantForm.name_kana} onChange={e => setTenantForm({ ...tenantForm, name_kana: e.target.value })} /></div>
-          </div>
-
-          {/* ENTRY DATE */}
-          <div className="bg-gray-800/50 p-6 rounded-2xl border border-white/5">
-            <label className="text-xs text-blue-500 font-bold block mb-3 uppercase tracking-wide flex items-center gap-2"><CalendarDays className="w-3 h-3" /> Paso 2: Fecha de Entrada (入居日)</label>
-            <input type="date" required className="w-full bg-black border border-gray-700 p-3 rounded-xl text-white font-mono text-lg focus:border-blue-500 outline-none" value={tenantForm.entry_date} onChange={e => setTenantForm({ ...tenantForm, entry_date: e.target.value })} />
-            {tenantForm.entry_date && (() => {
-              const d = new Date(tenantForm.entry_date);
-              const now = new Date();
-              if (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear() && d.getDate() > 1) {
-                const last = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-                const days = last - d.getDate() + 1;
-                return <p className="text-yellow-400 text-xs mt-2 flex items-center gap-1"><CalendarDays className="w-3 h-3" /> 日割り計算: {days}日分 de {last}日 (entrada a mitad de mes)</p>;
-              }
-              return null;
-            })()}
-          </div>
-
-          {/* PRICING */}
-          <div className="bg-gray-800/50 p-6 rounded-2xl border border-white/5">
-            <label className="text-xs text-blue-500 font-bold block mb-4 uppercase tracking-wide">Paso 3: Precio Mensual</label>
-            <div className="grid grid-cols-2 gap-6">
-              <div><label className="text-xs text-gray-400 block mb-1">Renta (¥/月)</label><input type="number" min="0" step="1000" className="w-full bg-black border border-gray-700 p-3 rounded-xl text-white font-mono text-lg focus:border-blue-500 outline-none" value={tenantForm.rent_contribution} onChange={e => setTenantForm({ ...tenantForm, rent_contribution: Number(e.target.value) || 0 })} /></div>
-              <div><label className="text-xs text-blue-400 block mb-1">Parking (¥/月)</label><input type="number" min="0" step="500" className="w-full bg-black border border-blue-900/50 p-3 rounded-xl text-blue-200 font-mono text-lg focus:border-blue-500 outline-none" value={tenantForm.parking_fee} onChange={e => setTenantForm({ ...tenantForm, parking_fee: Number(e.target.value) || 0 })} /></div>
-            </div>
-            {tenantForm.entry_date && parseInt(tenantForm.rent_contribution) > 0 && (() => {
-              const pr = calculateProRata(parseInt(tenantForm.rent_contribution), tenantForm.entry_date);
-              if (pr.isProRata) return <div className="mt-4 p-3 bg-yellow-900/20 border border-yellow-500/30 rounded-xl"><p className="text-yellow-400 text-sm font-bold flex items-center gap-2"><CalendarDays className="w-4 h-4" /> 日割り este mes: ¥{pr.amount.toLocaleString()} ({pr.days}日分)</p></div>;
-              return null;
-            })()}
-          </div>
-
-          <div className="flex gap-4 pt-2">
-            <button type="button" onClick={() => { if (!confirmDiscardChanges(JSON.stringify(tenantForm), tenantFormSnapshot.current)) return; setTenantForm({ ...EMPTY_TENANT_FORM }); setIsIdFound(false); setIsAddTenantModalOpen(false); }} className="flex-1 bg-transparent border border-gray-600 text-gray-300 font-bold py-4 rounded-xl hover:bg-white/5 transition">Cancelar</button>
-            <button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-4 rounded-xl shadow-lg hover:shadow-blue-500/20 transition hover:-translate-y-1">Confirmar</button>
-          </div>
-        </form>
-      </Modal>
-
-      {/* ====== MODAL: EDIT EMPLOYEE ====== */}
-      <Modal isOpen={!!editingEmployee} onClose={() => { if (editingEmployee && !confirmDiscardChanges(JSON.stringify(editingEmployee), employeeSnapshot.current)) return; setEditingEmployee(null); }} title="Editar Empleado">
-        {editingEmployee && (
-          <div className="space-y-4">
-            <div><label className="text-xs text-gray-400 font-bold block mb-1">社員No (ID)</label><input className="w-full bg-black/50 border border-gray-700 p-3 rounded-xl text-blue-400 font-mono" value={editingEmployee.id} disabled /></div>
-            <div className="grid grid-cols-2 gap-4">
-              <div><label className="text-xs text-gray-400 block mb-1">氏名 (Nombre)</label><input className="w-full bg-black/50 border border-gray-700 p-3 rounded-xl text-white focus:border-blue-500 outline-none" value={editingEmployee.name} onChange={e => setEditingEmployee({ ...editingEmployee, name: e.target.value })} /></div>
-              <div><label className="text-xs text-gray-400 block mb-1">カナ</label><input className="w-full bg-black/50 border border-gray-700 p-3 rounded-xl text-white focus:border-blue-500 outline-none" value={editingEmployee.name_kana} onChange={e => setEditingEmployee({ ...editingEmployee, name_kana: e.target.value })} /></div>
-            </div>
-            <div><label className="text-xs text-gray-400 block mb-1">派遣先 (Empresa)</label><input className="w-full bg-black/50 border border-gray-700 p-3 rounded-xl text-white focus:border-blue-500 outline-none" value={editingEmployee.company} onChange={e => setEditingEmployee({ ...editingEmployee, company: e.target.value })} /></div>
-            <div className="flex gap-4 pt-4">
-              <button onClick={() => { if (editingEmployee && !confirmDiscardChanges(JSON.stringify(editingEmployee), employeeSnapshot.current)) return; setEditingEmployee(null); }} className="flex-1 bg-transparent border border-gray-600 text-gray-300 font-bold py-3 rounded-xl hover:bg-white/5 transition">Cancelar</button>
-              <button onClick={handleSaveEmployee} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-500/20 transition">Guardar</button>
-            </div>
-          </div>
-        )}
       </Modal>
     </div>
   );

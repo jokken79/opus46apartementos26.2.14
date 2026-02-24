@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "antigravity": {
+      "command": "python",
+      "args": [
+        "C:/Users/kenji/AntigravitiSkillUSN/mcp-server/server.py"
+      ]
+    },
+    "antigravity-agents": {
+      "command": "python",
+      "args": [
+        "C:/Users/kenji/AntigravitiSkillUSN/.agent/mcp/agents-server.py"
+      ]
+    }
+  }
+}

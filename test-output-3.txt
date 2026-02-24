@@ -1,0 +1,171 @@
+
+> opus46apartementos@0.1.0 test
+> react-scripts test --watchAll=false
+
+(node:61568) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+FAIL src/App.test.tsx
+  笳・renders UNS Estate OS header
+
+    TestingLibraryElementError: Unable to find an element with the text: /Estate OS/i. This could be because the text is broken up by multiple elements. In this case, you can provide a function for your text matcher to make your matcher more flexible.
+
+    Ignored nodes: comments, script, style
+    <body>
+      <div>
+        <div
+          class="min-h-screen bg-[#0d0f12] text-gray-200 font-sans selection:bg-blue-500 selection:text-white overflow-x-hidden"
+        >
+          <div
+            class="fixed inset-0 pointer-events-none z-0"
+          >
+            <div
+              class="absolute top-0 left-0 w-full h-[500px] bg-gradient-to-b from-blue-900/10 to-transparent"
+            />
+            <div
+              class="absolute bottom-0 right-0 w-[800px] h-[800px] bg-blue-500/5 rounded-full blur-[120px]"
+            />
+          </div>
+          <header
+            class="h-20 border-b border-white/5 flex items-center justify-between px-6 md:px-10 bg-[#0d0f12]/80 backdrop-blur-md sticky top-0 z-30"
+          >
+            <div
+              class="flex items-center gap-4"
+            >
+              <div
+                class="relative group"
+              >
+                <div
+                  class="absolute -inset-1 bg-gradient-to-r from-blue-600 to-cyan-500 rounded-xl blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"
+                />
+                <div
+                  class="relative w-14 h-14 bg-black/40 backdrop-blur-xl rounded-xl flex items-center justify-center border border-white/10 p-1 shadow-2xl overflow-hidden"
+                >
+                  <img
+                    alt="UNS Logo"
+                    class="w-full h-full object-contain filter drop-shadow(0 0 8px rgba(0,82,204,0.3))"
+                    src="/uns-logo.png"
+                  />
+                  <div
+                    class="absolute inset-0 bg-gradient-to-tr from-white/5 to-transparent pointer-events-none"
+                  />
+                </div>
+              </div>
+              <div
+                class="hidden sm:block"
+              >
+                <h1
+                  class="text-xl font-black text-white tracking-tighter leading-none font-hud"
+                >
+                  UNS-KIKAKU
+                </h1>
+                <span
+                  class="text-[10px] text-blue-400 uppercase tracking-[0.3em] font-bold font-hud"
+                >
+                  Jpkken-OS Elite v7
+                </span>
+              </div>
+            </div>
+            <div
+              class="flex items-center bg-[#15171c] border border-white/10 rounded-full px-3 py-2 flex-1 mx-3 md:mx-0 md:flex-none md:w-96 focus-within:border-blue-500/50 transition-all group"
+            >
+              <svg
+                aria-hidden="true"
+                class="lucide lucide-search w-4 h-4 text-gray-500 group-focus-within:text-blue-500 transition-colors shrink-0"
+                fill="none"
+                height="24"
+                stroke="currentColor"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                viewBox="0 0 24 24"
+                width="24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="m21 21-4.34-4.34"
+                />
+                <circle
+                  cx="11"
+                  cy="11"
+                  r="8"
+                />
+              </svg>
+              <input
+                class="bg-transparent border-none outline-none text-sm text-white w-full ml-2 placeholder-gray-600"
+                placeholder="Buscar propiedades, empleados, inquilinos..."
+                type="text"
+                value=""
+              />
+            </div>
+            <div
+              class="flex items-center gap-2"
+            >
+              <button
+                aria-label="Alertas (0)"
+                class="w-8 h-8 rounded-full bg-[#15171c] border border-white/10 flex items-center justify-center hover:bg-[#20242c] cursor-pointer transition relative"
+              >
+                <svg
+                  aria-hidden="true"
+                  class="lucide lucide-bell w-4 h-4 text-gray-400"
+                  fill="none"
+                  height="24"
+                  stroke="currentColor"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="2"
+                  viewBox="0 0 24 24"
+                  width="24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M10.268 21a2 2 0 0 0 3.464 0"
+                  />
+                  <path
+                    d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"
+                  />
+                </svg>
+              </button>
+              <div
+                class="w-8 h-8 rounded-full bg-gradient-to-tr from-gray-700 to-gray-600 border border-gray-500 overflow-hidden"
+              >
+                <img
+                  alt="U"
+                  src="https://api.dicebear.com/7.x/avataaars/svg?seed=AdminUNS"
+                />
+              </div>
+            </div>
+          </header>
+          <div
+            class="flex relative z-10"
+          >
+            <nav
+              class="w-20 hidden md:flex flex-col items-center py-8 gap-8 border-r border-white/5 h-[calc(100vh-80px)] sticky top-20 bg-[#0d0f12]/50 backdrop-blur-sm"
+            >
+              <button
+                aria-label="HQ"
+                class="relative group w-12 h-12 flex flex-col items-center justify-center rounded-xl transition-all duration-300 bg-blue-600 text-white shadow-[0_0_20px_rgba(0,82,204,0.4)] scale-110 border border-blue-400/50"
+                title="HQ"
+    ...
+
+      29 |   render(<App />);
+      30 |   expect(screen.getByText(/UNS-KIKAKU/i)).toBeInTheDocument();
+    > 31 |   expect(screen.getByText(/Estate OS/i)).toBeInTheDocument();
+         |                 ^
+      32 | });
+      33 |
+      34 | test('renders dashboard by default', () => {
+
+      at Object.getElementError (node_modules/@testing-library/dom/dist/config.js:37:19)
+      at node_modules/@testing-library/dom/dist/query-helpers.js:76:38
+      at node_modules/@testing-library/dom/dist/query-helpers.js:52:17
+      at getByText (node_modules/@testing-library/dom/dist/query-helpers.js:95:19)
+      at Object.<anonymous> (src/App.test.tsx:31:17)
+
+PASS src/utils/validators.test.ts
+PASS src/utils/propertyHelpers.test.ts
+
+Test Suites: 1 failed, 2 passed, 3 total
+Tests:       1 failed, 41 passed, 42 total
+Snapshots:   0 total
+Time:        1.134 s
+Ran all test suites.
