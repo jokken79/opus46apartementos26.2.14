@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import './App.css';
 import {
-  Building, Users, LayoutDashboard, Search, Database, UploadCloud, PlusCircle, X,
-  AlertCircle, Calculator, DollarSign, UserPlus, Calendar, Check,
-  Trash2, User, History, MapPin, Edit2, Map, Hash, Loader2, Bell,
-  Settings, CalendarDays, Percent, LogOut, Table2, FileText, TrendingUp
+  Building, Users, LayoutDashboard, Search, UploadCloud, X,
+  AlertCircle, Calculator, DollarSign, UserPlus, Calendar,
+  User, History, Edit2, Map, Hash, Loader2, Bell,
+  Settings, Percent, LogOut, FileText, TrendingUp
 } from 'lucide-react';
-import { DashboardView } from './components/dashboard/DashboardView';
+
 import { PropertiesView } from './components/properties/PropertiesView';
 import { EmployeesView } from './components/employees/EmployeesView';
 import { ReportsView } from './components/reports/ReportsView';
@@ -16,7 +16,7 @@ import { ImportView } from './components/import/ImportView';
 import { useIndexedDB } from './hooks/useIndexedDB';
 import { useExcelImport } from './hooks/useExcelImport';
 import type { Property, Tenant, Employee, AppDatabase, AlertItem } from './types/database';
-import { validateBackup, validateProperty, validateTenant } from './utils/validators';
+import { validateBackup, validateProperty } from './utils/validators';
 import { isPropertyActive } from './utils/propertyHelpers';
 import { COMPANY_INFO } from './utils/constants';
 
@@ -47,7 +47,6 @@ const calculateProRata = (monthlyAmount: number, entryDate: string) => {
 };
 
 const EMPTY_PROPERTY_FORM = { id: null as number | null, name: '', room_number: '', postal_code: '', address_auto: '', address_detail: '', manager_name: '', manager_phone: '', contract_start: new Date().toISOString().split('T')[0], contract_end: '', type: '1K', capacity: 2, rent_cost: 0, rent_price_uns: 0, parking_cost: 0, parking_capacity: 0, kanri_hi: 0, billing_mode: 'fixed' as const };
-const EMPTY_TENANT_FORM = { employee_id: '', name: '', name_kana: '', company: '', property_id: '' as string | number, rent_contribution: 0, parking_fee: 0, entry_date: new Date().toISOString().split('T')[0] };
 
 type UnknownObject = Record<string, unknown>;
 
@@ -118,19 +117,21 @@ export default function App() {
   const [isSearchingAddress, setIsSearchingAddress] = useState(false);
   const [addressSearchError, setAddressSearchError] = useState('');
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [isAddTenantModalOpen, setIsAddTenantModalOpen] = useState(false);
   const [isRentManagerOpen, setIsRentManagerOpen] = useState(false);
   const [isPropertyModalOpen, setIsPropertyModalOpen] = useState(false);
   const [selectedPropertyForRent, setSelectedPropertyForRent] = useState<Property | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [isIdFound, setIsIdFound] = useState(false);
-  const [propertyViewMode, setPropertyViewMode] = useState('active');
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [companyFilter, setCompanyFilter] = useState('');
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [empSearch, setEmpSearch] = useState('');
-  const [empPage, setEmpPage] = useState(1);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [empCategory, setEmpCategory] = useState<'genzai' | 'ukeoi' | 'staff'>('genzai');
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [empOnlyZaishoku, setEmpOnlyZaishoku] = useState(false);
-  const EMP_PER_PAGE = 50;
-  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
 
   const [tenantForm, setTenantForm] = useState<any>({
     employee_id: '', name: '', name_kana: '', company: '', property_id: '',
@@ -145,7 +146,6 @@ export default function App() {
   // Snapshots para detectar cambios sin guardar (B13)
   const propertyFormSnapshot = useRef('');
   const tenantFormSnapshot = useRef('');
-  const employeeSnapshot = useRef('');
 
   const confirmDiscardChanges = useCallback((currentJson: string, initialJson: string): boolean => {
     if (currentJson !== initialJson) {
@@ -232,11 +232,7 @@ export default function App() {
     finally { clearTimeout(timeout); setIsSearchingAddress(false); }
   };
 
-  const uniqueCompanies = useMemo(() => {
-    const companies = new Set<string>();
-    db.tenants.filter(t => t.status === 'active' && t.company).forEach(t => companies.add(t.company!));
-    return Array.from(companies).sort();
-  }, [db.tenants]);
+
 
   const filteredProperties = useMemo(() => {
     let result = db.properties;
@@ -323,28 +319,7 @@ export default function App() {
     });
   };
 
-  const handleSaveEmployee = () => {
-    if (!editingEmployee) return;
-    if (!editingEmployee.id.trim() || !editingEmployee.name.trim()) { alert('ID y nombre son obligatorios.'); return; }
-    setDb(prev => {
-      const tableKey = empCategory === 'genzai' ? 'employeesGenzai' : empCategory === 'ukeoi' ? 'employeesUkeoi' : 'employeesStaff';
-      const table = [...prev[tableKey]];
-      const idx = table.findIndex(e => e.id === editingEmployee.id);
-      if (idx >= 0) { table[idx] = editingEmployee; return { ...prev, [tableKey]: table }; }
-      return prev;
-    });
-    setEditingEmployee(null);
-  };
 
-  const handleDeleteEmployee = (empId: string) => {
-    const tableKey = empCategory === 'genzai' ? 'employeesGenzai' : empCategory === 'ukeoi' ? 'employeesUkeoi' : 'employeesStaff';
-    const emp = db[tableKey].find(e => e.id === empId);
-    if (!emp) return;
-    const isAssigned = db.tenants.some(t => t.employee_id === empId && t.status === 'active');
-    if (isAssigned) { alert(`No se puede eliminar: ${emp.name} está asignado a una propiedad activa.`); return; }
-    if (!window.confirm(`¿Eliminar empleado "${emp.name}" (${empId})?`)) return;
-    setDb(prev => ({ ...prev, [tableKey]: prev[tableKey].filter(e => e.id !== empId) }));
-  };
 
   const handleUpdateRentDetails = (tid: number, field: string, val: string) => {
     const v = parseInt(val) || 0;
@@ -375,26 +350,7 @@ export default function App() {
     setDb(prev => autoSplitRent(prev, selectedPropertyForRent.id));
   };
 
-  const handleAddTenant = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!tenantForm.property_id) { alert('Error: propiedad no seleccionada.'); return; }
-    const propId = Number(tenantForm.property_id);
-    const tenantData = { ...tenantForm, property_id: propId, status: 'active' as const };
-    // Validar con Zod
-    const validation = validateTenant(tenantData);
-    if (!validation.success) {
-      alert('Error de validación:\n' + validation.errors.map(e => `• ${e.field}: ${e.message}`).join('\n'));
-      return;
-    }
-    if (db.tenants.find(t => t.employee_id === tenantForm.employee_id && t.status === 'active')) { alert('Este 社員No ya está asignado a otro apartamento.'); return; }
-    const newT: Tenant = { id: generateId(), ...tenantData };
-    setDb(prev => {
-      const updated = { ...prev, tenants: [...prev.tenants, newT] };
-      return autoSplitRent(updated, propId);
-    });
-    setIsAddTenantModalOpen(false);
-    setTenantForm({ employee_id: '', name: '', name_kana: '', company: '', property_id: '', rent_contribution: 0, parking_fee: 0, entry_date: new Date().toISOString().split('T')[0] });
-  };
+
 
   const removeTenant = (tid: number) => {
     const tenant = db.tenants.find(t => t.id === tid);
