@@ -493,6 +493,12 @@ export default function App() {
               }}
               onDelete={handleDeleteProperty}
               onManageTenants={openRentManager}
+              onAddNew={() => {
+                const f = { ...EMPTY_PROPERTY_FORM };
+                setPropertyForm(f);
+                propertyFormSnapshot.current = JSON.stringify(f);
+                setIsPropertyModalOpen(true);
+              }}
               setIsSearchingAddress={setIsSearchingAddress}
             />
           )}

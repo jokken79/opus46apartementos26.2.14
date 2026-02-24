@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { GlassCard } from '../ui';
-import { Building, MapPin, Edit2, Trash2, Home } from 'lucide-react';
+import { Building, MapPin, Edit2, Trash2, Home, PlusCircle } from 'lucide-react';
 import type { AppDatabase, Property } from '../../types/database';
 import { isPropertyActive } from '../../utils/propertyHelpers';
 
@@ -10,10 +10,11 @@ interface PropertiesViewProps {
     onEdit: (p: Property) => void;
     onDelete: (id: number) => void;
     onManageTenants: (p: Property) => void;
+    onAddNew: () => void;
     setIsSearchingAddress: (val: boolean) => void;
 }
 
-export function PropertiesView({ db, searchTerm, onEdit, onDelete, onManageTenants, setIsSearchingAddress }: PropertiesViewProps) {
+export function PropertiesView({ db, searchTerm, onEdit, onDelete, onManageTenants, onAddNew, setIsSearchingAddress }: PropertiesViewProps) {
     const [filterActive, setFilterActive] = useState(true);
 
     // Filtro de propiedades
@@ -38,6 +39,12 @@ export function PropertiesView({ db, searchTerm, onEdit, onDelete, onManageTenan
                     >
                         <div className={`w-2 h-2 rounded-full ${filterActive ? 'bg-white' : 'bg-gray-500'}`} />
                         {filterActive ? 'Mostrando Activos' : 'Mostrando Todos'}
+                    </button>
+                    <button
+                        onClick={onAddNew}
+                        className="px-5 py-2 rounded-xl text-sm font-bold bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-500/20 transition flex items-center gap-2"
+                    >
+                        <PlusCircle className="w-4 h-4" /> Nueva Propiedad
                     </button>
                 </div>
             </div>

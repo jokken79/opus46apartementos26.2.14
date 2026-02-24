@@ -1,0 +1,7 @@
+
+D:\Git\opus46apartementos26.2.14\src\App.tsx
+  120:10  warning  'isAddTenantModalOpen' is assigned a value but never used  @typescript-eslint/no-unused-vars
+  124:10  warning  'isIdFound' is assigned a value but never used             @typescript-eslint/no-unused-vars
+
+笨・2 problems (0 errors, 2 warnings)
+
